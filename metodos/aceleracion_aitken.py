@@ -7,7 +7,7 @@ from utils.configuracion import establecer_configuracion
 def g(x):
     return np.exp(-x)
 
-def punto_fijo(x, tipo):
+def aceleracion_aitken(x, tipo):
     p, calcular_error, criterio_parada = establecer_configuracion(tipo)
 
     tabla = []
@@ -17,16 +17,25 @@ def punto_fijo(x, tipo):
 
     for i in range(p.iteraciones):
         gx = round(g(x), p.precision)
-        
-        error = calcular_error(gx, x)
-        
-        tabla.append([i + 1, x, gx, error])
+        gx2 = round(g(gx), p.precision)
+
+        den = gx2 - 2 * gx + x
+
+        if den == 0:
+            raise ValueError("El denominador en Aitken es cero.")
+
+        xn = round(x - (gx - x) ** 2 / den, p.precision)
+
+        error = calcular_error(xn, x)
+
+        tabla.append([i + 1, x, gx, gx2, xn, error])
 
         if criterio_parada(error):
             break
 
-        x = gx
+        x = xn
 
-    print(tabulate(tabla, headers=["i", "x", "g(x)", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
+    print(tabulate(tabla, headers=["i", "x", "xn+1","xn+2","x*", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
 
-punto_fijo(1)
+if __name__ == "__main__":
+    aceleracion_aitken(1, "absoluto")

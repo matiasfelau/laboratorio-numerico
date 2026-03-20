@@ -31,6 +31,7 @@ def newton_raphson(x, tipo="absoluto"):
 
         x = xn
 
-    print(tabulate(tabla, headers=["i", "xn", "f(xn)", "f'(xn)", "xn+1", "e"], tablefmt="grid", floatfmt=f".{precision}f"))
+    print(tabulate(tabla, headers=["i", "xn", "f(xn)", "f'(xn)", "xn+1", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
 
-newton_raphson(-1)
+if __name__ == "__main__":
+    newton_raphson(-1)

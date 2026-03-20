@@ -42,4 +42,5 @@ def biseccion(f, a, b, tipo):
 
     print(tabulate(tabla, headers=["i", "a", "b", "c", "f(c)", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
 
-biseccion(f, 0, 1)
+if __name__ == "__main__":
+    biseccion(f, 0, 1, "absoluto")
