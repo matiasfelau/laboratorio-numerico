@@ -1,9 +1,16 @@
-# utils/parametros.py
+"""Global runtime parameters shared by numeric methods.
+
+The context manager allows web requests to temporarily override defaults
+without mutating method implementations.
+"""
+
 from contextlib import contextmanager
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ConfigMetodo:
+    """Resolved configuration consumed by numeric algorithms."""
+
     iteraciones: int
     tolerancia: float
     porcentaje: float
@@ -21,6 +28,7 @@ _RUNTIME_OVERRIDES: dict[str, int | float] = {}
 
 @contextmanager
 def aplicar_configuracion_global(overrides: dict[str, int | float] | None):
+    """Temporarily applies request-level overrides during one execution."""
     global _RUNTIME_OVERRIDES
 
     previous = _RUNTIME_OVERRIDES.copy()
@@ -43,12 +51,14 @@ def _normalizar_overrides(overrides: dict[str, int | float] | None) -> dict[str,
         clean[key] = value
     return clean
 
+
 def resolver_config(
     iteraciones=None,
     tolerancia=None,
     porcentaje=None,
     precision=None,
 ):
+    """Resolves effective config from defaults, runtime overrides and explicit args."""
     cfg = ConfigMetodo(
         iteraciones=(
             _RUNTIME_OVERRIDES.get("iteraciones", DEFAULTS.iteraciones)
@@ -74,13 +84,13 @@ def resolver_config(
 
     if cfg.iteraciones <= 0:
         raise ValueError("La cantidad de iteraciones debe ser > 0")
-    
+
     if cfg.tolerancia <= 0:
         raise ValueError("La tolerancia debe ser > 0")
-    
+
     if cfg.porcentaje <= 0:
         raise ValueError("El porcentaje debe ser > 0")
-    
+
     if cfg.precision < 0:
         raise ValueError("La precision debe ser >= 0")
 

@@ -1,3 +1,9 @@
+"""Método de bisección.
+
+Nota: se conserva la regla de trabajo manual: el valor redondeado que se
+guarda en tabla es el que continúa a la siguiente iteración.
+"""
+
 import numpy as np
 from tabulate import tabulate
 
@@ -6,7 +12,9 @@ from utils.configuracion import establecer_configuracion
 def f(x):
     return np.sqrt(x) - np.cos(x)
 
+
 def biseccion(f, a, b, tipo):
+    """Ejecuta bisección con criterio y configuración global vigente."""
     p, calcular_error, criterio_parada = establecer_configuracion(tipo)
     
     condicion = f(a) * f(b)

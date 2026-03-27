@@ -1,9 +1,17 @@
+"""Registry of methods exposed by the API to the frontend form generator."""
+
 from dataclasses import dataclass
 from typing import Any
 
 
+ERROR_OPTIONS = ["Absoluto", "Relativo"]
+FD_METHOD_OPTIONS = ["Progresivo", "Regresivo", "Central"]
+
+
 @dataclass(frozen=True)
 class FieldDefinition:
+    """UI field metadata used by the dynamic form renderer."""
+
     key: str
     label: str
     kind: str
@@ -14,6 +22,8 @@ class FieldDefinition:
 
 @dataclass(frozen=True)
 class MethodDefinition:
+    """Method metadata shown in selectors and descriptions."""
+
     key: str
     label: str
     description: str
@@ -21,6 +31,8 @@ class MethodDefinition:
 
 
 def get_methods() -> list[MethodDefinition]:
+    """Returns method definitions without changing calculation behavior."""
+
     return [
         MethodDefinition(
             key="newton_raphson",
@@ -29,7 +41,7 @@ def get_methods() -> list[MethodDefinition]:
             fields=[
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
-                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
+                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ERROR_OPTIONS),
             ],
         ),
         MethodDefinition(
@@ -40,7 +52,7 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
                 FieldDefinition("a", "Extremo izquierdo (a)", "float", ""),
                 FieldDefinition("b", "Extremo derecho (b)", "float", ""),
-                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
+                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ERROR_OPTIONS),
             ],
         ),
         MethodDefinition(
@@ -50,7 +62,7 @@ def get_methods() -> list[MethodDefinition]:
             fields=[
                 FieldDefinition("g_expr", "Función g(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
-                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
+                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ERROR_OPTIONS),
             ],
         ),
         MethodDefinition(
@@ -60,7 +72,7 @@ def get_methods() -> list[MethodDefinition]:
             fields=[
                 FieldDefinition("g_expr", "Función g(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
-                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
+                FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ERROR_OPTIONS),
             ],
         ),
         MethodDefinition(
@@ -82,7 +94,7 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("f_expr", "Función f(x) (opcional)", "str", "", optional=True),
                 FieldDefinition("x", "Punto de evaluación x", "float", "1"),
                 FieldDefinition("h", "Paso h", "float", "0.5"),
-                FieldDefinition("metodo", "Esquema", "str", "Central", ["Progresivo", "Regresivo", "Central"]),
+                FieldDefinition("metodo", "Esquema", "str", "Central", FD_METHOD_OPTIONS),
                 FieldDefinition("y_xm1", "Imagen f(x-h) (opcional)", "float", "", optional=True),
                 FieldDefinition("y_x", "Imagen f(x) (opcional)", "float", "", optional=True),
                 FieldDefinition("y_xp1", "Imagen f(x+h) (opcional)", "float", "", optional=True),

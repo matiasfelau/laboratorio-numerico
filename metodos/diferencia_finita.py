@@ -1,3 +1,5 @@
+"""Diferencias finitas por expresión o por imágenes dadas."""
+
 import numpy as np
 from scipy.differentiate import derivative
 from utils.parametros import resolver_config
@@ -40,6 +42,7 @@ def derivada_finita(x, h, metodo, y_xm1=None, y_x=None, y_xp1=None):
 
 
 def diferencia_finita(x, h, metodo="central", y_xm1=None, y_x=None, y_xp1=None):
+	"""Calcula derivada aproximada respetando modos y salidas actuales."""
 	precision = resolver_config().precision
 	metodo_normalizado, metodo_etiqueta = _normalizar_metodo(metodo)
 	usa_imagenes = any(valor is not None for valor in (y_xm1, y_x, y_xp1))

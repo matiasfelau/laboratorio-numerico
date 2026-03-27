@@ -1,3 +1,10 @@
+"""Interpolación de Lagrange y métricas de error.
+
+Contiene dos modos:
+- Con función real f(x): calcula error local y cota teórica global.
+- Con imágenes y: no calcula error local/exacto no aplicable.
+"""
+
 import numpy as np
 import sympy as sp
 from math import factorial
@@ -122,6 +129,7 @@ def _simbolizar_lista(values, precision):
 
 
 def lagrange(f_expr_texto, x_nodos, x_eval, y_nodos=None):
+	"""Ejecuta Lagrange sin alterar reglas de evaluación ya validadas."""
 	config = resolver_config()
 	precision = config.precision
 
