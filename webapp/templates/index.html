@@ -99,6 +99,27 @@
       </section>
     </main>
 
+    <footer class="app-footer" aria-label="Información institucional">
+      <div class="app-footer-inner">
+        <p>© 2026 - UADE | Facultad de Ingeniería y Ciencias Exactas | Ingeniería en Informática | Modelado y Simulación.</p>
+        <p>Estudiante: Matías Felau | Contacto: matiasfelau@gmail.com</p>
+      </div>
+    </footer>
+
+    <button id="methodTheoryButton" class="theory-help-fab" type="button" title="Ver fórmulas del método" aria-label="Ver fórmulas del método">?</button>
+
+    <div id="methodTheoryModal" class="fixed-help-modal theory-help-modal" hidden>
+      <div id="methodTheoryBackdrop" class="fixed-help-backdrop"></div>
+      <div class="fixed-help-dialog theory-help-dialog" role="dialog" aria-modal="true" aria-labelledby="methodTheoryTitle">
+        <div class="fixed-help-header">
+          <h3 id="methodTheoryTitle">Fórmulas del método</h3>
+          <button id="methodTheoryClose" class="fixed-help-close" type="button" aria-label="Cerrar">×</button>
+        </div>
+        <p id="methodTheorySubtitle" class="fixed-help-text"></p>
+        <div id="methodTheoryContent" class="theory-help-content"></div>
+      </div>
+    </div>
+
     <button id="fixedPointHelpButton" class="fixed-help-inline-button" type="button" title="Ayuda para construir g(x)" aria-label="Ayuda para construir g(x)" hidden>!</button>
 
     <div id="fixedPointHelpModal" class="fixed-help-modal" hidden>

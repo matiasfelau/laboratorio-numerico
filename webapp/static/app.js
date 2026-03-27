@@ -25,6 +25,13 @@ const fixedPointHelpResult = document.getElementById("fixedPointHelpResult");
 const fixedPointHelpPreviewBox = document.getElementById("fixedPointHelpPreviewBox");
 const fixedPointHelpPreviewMath = document.getElementById("fixedPointHelpPreviewMath");
 const fixedPointHelpPreviewError = document.getElementById("fixedPointHelpPreviewError");
+const methodTheoryButton = document.getElementById("methodTheoryButton");
+const methodTheoryModal = document.getElementById("methodTheoryModal");
+const methodTheoryBackdrop = document.getElementById("methodTheoryBackdrop");
+const methodTheoryClose = document.getElementById("methodTheoryClose");
+const methodTheoryTitle = document.getElementById("methodTheoryTitle");
+const methodTheorySubtitle = document.getElementById("methodTheorySubtitle");
+const methodTheoryContent = document.getElementById("methodTheoryContent");
 
 let methods = [];
 let latexPreviewTimer = null;
@@ -48,6 +55,116 @@ const EXPRESSION_OPS = [
   { label: "log", insert: "log()", cursorOffset: -1 },
   { label: "π", insert: "π" },
 ];
+
+const THEORY_BY_METHOD = {
+  newton_raphson: {
+    subtitle: "Newton-Raphson",
+    blocks: [
+      {
+        title: "Actualización iterativa",
+        items: [
+          { latex: "x_{n+1}=x_n-\\frac{f(x_n)}{f'(x_n)}" },
+        ],
+      },
+      {
+        title: "Criterio de error",
+        items: [
+          { latex: "e_n=|x_{n+1}-x_n|", note: "Error absoluto" },
+          { latex: "e_n=\\left|\\frac{x_{n+1}-x_n}{x_{n+1}}\\right|", note: "Error relativo" },
+        ],
+      },
+    ],
+  },
+  biseccion: {
+    subtitle: "Bisección",
+    blocks: [
+      {
+        title: "Punto medio",
+        items: [{ latex: "c_n=\\frac{a_n+b_n}{2}" }],
+      },
+      {
+        title: "Actualización del intervalo",
+        items: [
+          { latex: "[a_{n+1},b_{n+1}]=[a_n,c_n]\\;\\text{si}\\;f(a_n)f(c_n)<0" },
+          { latex: "[a_{n+1},b_{n+1}]=[c_n,b_n]\\;\\text{si}\\;f(c_n)f(b_n)<0" },
+        ],
+      },
+      {
+        title: "Criterio de error",
+        items: [
+          { latex: "e_n=|c_n-c_{n-1}|", note: "Error absoluto" },
+          { latex: "e_n=\\left|\\frac{c_n-c_{n-1}}{c_n}\\right|", note: "Error relativo" },
+        ],
+      },
+    ],
+  },
+  punto_fijo: {
+    subtitle: "Punto fijo",
+    blocks: [
+      {
+        title: "Iteración",
+        items: [{ latex: "x_{n+1}=g(x_n)" }],
+      },
+      {
+        title: "Condición de convergencia local",
+        items: [{ latex: "|g'(x^*)|<1" }],
+      },
+      {
+        title: "Criterio de error",
+        items: [
+          { latex: "e_n=|x_{n+1}-x_n|", note: "Error absoluto" },
+          { latex: "e_n=\\left|\\frac{x_{n+1}-x_n}{x_{n+1}}\\right|", note: "Error relativo" },
+        ],
+      },
+    ],
+  },
+  aceleracion_aitken: {
+    subtitle: "Aceleración de Aitken",
+    blocks: [
+      {
+        title: "Secuencia base",
+        items: [{ latex: "x_{n+1}=g(x_n),\\quad x_{n+2}=g(x_{n+1})" }],
+      },
+      {
+        title: "Aceleración Δ²",
+        items: [{ latex: "x_n^*=x_n-\\frac{(x_{n+1}-x_n)^2}{x_{n+2}-2x_{n+1}+x_n}" }],
+      },
+      {
+        title: "Criterio de error",
+        items: [
+          { latex: "e_n=|x_n^*-x_n|", note: "Error absoluto" },
+          { latex: "e_n=\\left|\\frac{x_n^*-x_n}{x_n^*}\\right|", note: "Error relativo" },
+        ],
+      },
+    ],
+  },
+  lagrange: {
+    subtitle: "Interpolación de Lagrange",
+    blocks: [
+      {
+        title: "Polinomio interpolante",
+        items: [{ latex: "P_n(x)=\\sum_{i=0}^{n}y_iL_i(x)" }],
+      },
+      {
+        title: "Base de Lagrange",
+        items: [{ latex: "L_i(x)=\\prod_{j=0,\\,j\\ne i}^{n}\\frac{x-x_j}{x_i-x_j}" }],
+      },
+    ],
+  },
+  diferencia_finita: {
+    subtitle: "Diferencias finitas",
+    blocks: [
+      {
+        title: "Aproximaciones de derivada",
+        items: [
+          { latex: "f'(x)\\approx\\frac{f(x+h)-f(x)}{h}", note: "Progresiva" },
+          { latex: "f'(x)\\approx\\frac{f(x)-f(x-h)}{h}", note: "Regresiva" },
+          { latex: "f'(x)\\approx\\frac{f(x+h)-f(x-h)}{2h}", note: "Central" },
+        ],
+      },
+    ],
+  },
+};
 
 let persistedState = {
   selectedMethod: null,
@@ -111,6 +228,92 @@ function clearPlot() {
 function clearOutput() {
   outputTable.classList.add("output-empty");
   outputTable.textContent = "Todavía no hay resultados. Ejecutá un método para comenzar.";
+}
+
+function countStepDecimals(stepValue) {
+  const text = String(stepValue || "");
+  if (!text.includes(".")) {
+    return 0;
+  }
+  return text.split(".")[1].length;
+}
+
+function adjustGlobalNumberInput(input, direction) {
+  const rawStep = input.getAttribute("step");
+  let step = Number.parseFloat(rawStep || "");
+  if (!Number.isFinite(step) || step <= 0) {
+    step = input.id === "globalPorcentaje" ? 0.1 : 1;
+  }
+
+  const minAttr = input.getAttribute("min");
+  const maxAttr = input.getAttribute("max");
+  const min = minAttr == null || minAttr === "" ? null : Number.parseFloat(minAttr);
+  const max = maxAttr == null || maxAttr === "" ? null : Number.parseFloat(maxAttr);
+
+  let current = Number.parseFloat(input.value);
+  if (!Number.isFinite(current)) {
+    current = Number.isFinite(min) ? Number(min) : 0;
+  }
+
+  let next = current + direction * step;
+  if (Number.isFinite(min)) {
+    next = Math.max(next, Number(min));
+  }
+  if (Number.isFinite(max)) {
+    next = Math.min(next, Number(max));
+  }
+
+  const decimals = countStepDecimals(step);
+  input.value = decimals > 0 ? next.toFixed(decimals) : String(Math.round(next));
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function wrapWithModernStepper(input) {
+  if (!input || input.type !== "number") {
+    return;
+  }
+  if (input.parentElement?.classList.contains("number-stepper")) {
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "number-stepper";
+
+  const controls = document.createElement("div");
+  controls.className = "number-stepper-controls";
+
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "number-stepper-btn";
+  upBtn.textContent = "▲";
+  upBtn.title = "Incrementar";
+
+  const downBtn = document.createElement("button");
+  downBtn.type = "button";
+  downBtn.className = "number-stepper-btn";
+  downBtn.textContent = "▼";
+  downBtn.title = "Disminuir";
+
+  upBtn.addEventListener("click", () => adjustGlobalNumberInput(input, +1));
+  downBtn.addEventListener("click", () => adjustGlobalNumberInput(input, -1));
+
+  controls.appendChild(upBtn);
+  controls.appendChild(downBtn);
+
+  const parent = input.parentElement;
+  if (!parent) {
+    return;
+  }
+
+  parent.insertBefore(wrapper, input);
+  wrapper.appendChild(input);
+  wrapper.appendChild(controls);
+}
+
+function setupModernGlobalNumberSteppers() {
+  [globalIteracionesInput, globalToleranciaInput, globalPrecisionInput, globalPorcentajeInput].forEach(
+    wrapWithModernStepper
+  );
 }
 
 function loadPersistedState() {
@@ -383,6 +586,75 @@ function renderMathJax() {
   if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
     window.MathJax.typesetPromise([latexPreviewMath]).catch(() => {});
   }
+}
+
+function renderMathJaxForElements(elements) {
+  if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+    window.MathJax.typesetPromise(elements).catch(() => {});
+  }
+}
+
+function closeMethodTheoryModal() {
+  if (!methodTheoryModal) {
+    return;
+  }
+  methodTheoryModal.hidden = true;
+}
+
+function renderMethodTheoryContent(method) {
+  if (!methodTheoryTitle || !methodTheorySubtitle || !methodTheoryContent) {
+    return;
+  }
+
+  const fallbackTitle = "Fórmulas teóricas";
+  const fallbackSubtitle = method?.label
+    ? `${method.label}: no hay fórmulas cargadas todavía.`
+    : "Seleccioná un método para ver su teoría base.";
+
+  if (!method || !THEORY_BY_METHOD[method.key]) {
+    methodTheoryTitle.textContent = fallbackTitle;
+    methodTheorySubtitle.textContent = fallbackSubtitle;
+    methodTheoryContent.innerHTML = "";
+    return;
+  }
+
+  const entry = THEORY_BY_METHOD[method.key];
+  methodTheoryTitle.textContent = `Fórmulas teóricas: ${entry.subtitle}`;
+  methodTheorySubtitle.textContent = "Resumen mínimo de las expresiones usadas en este método.";
+
+  const blocks = entry.blocks
+    .map((block) => {
+      const items = block.items
+        .map((item) => {
+          const note = item.note ? `<small>${escapeHtml(item.note)}</small>` : "";
+          return `
+            <div class="theory-help-item">
+              <div class="latex-math">\\(${item.latex}\\)</div>
+              ${note}
+            </div>
+          `;
+        })
+        .join("");
+
+      return `
+        <section class="theory-help-block">
+          <h4>${escapeHtml(block.title)}</h4>
+          ${items}
+        </section>
+      `;
+    })
+    .join("");
+
+  methodTheoryContent.innerHTML = blocks;
+  renderMathJaxForElements([methodTheoryContent]);
+}
+
+function openMethodTheoryModal() {
+  if (!methodTheoryModal) {
+    return;
+  }
+  renderMethodTheoryContent(selectedMethod());
+  methodTheoryModal.hidden = false;
 }
 
 function showLatexPreview(latexText) {
@@ -1891,6 +2163,7 @@ async function runMethod() {
 }
 
 async function bootstrap() {
+  setupModernGlobalNumberSteppers();
   loadPersistedState();
   applyPersistedGlobalInputs();
 
@@ -1914,6 +2187,7 @@ async function bootstrap() {
   }
 
   renderForm();
+  renderMethodTheoryContent(selectedMethod());
   setStatus("idle", "Listo");
 }
 
@@ -1926,6 +2200,7 @@ methodSelect.addEventListener("change", () => {
   setPlotMessage("Ejecutá el método para generar el gráfico.");
   setStatus("idle", "Listo");
   renderForm();
+  renderMethodTheoryContent(selectedMethod());
 });
 
 methodForm.addEventListener("input", () => {
@@ -1975,6 +2250,16 @@ if (fixedPointHelpResult) {
     }
     copySuggestedGToMethodField();
   });
+}
+
+if (methodTheoryButton) {
+  methodTheoryButton.addEventListener("click", openMethodTheoryModal);
+}
+if (methodTheoryClose) {
+  methodTheoryClose.addEventListener("click", closeMethodTheoryModal);
+}
+if (methodTheoryBackdrop) {
+  methodTheoryBackdrop.addEventListener("click", closeMethodTheoryModal);
 }
 
 bootstrap().catch((error) => {

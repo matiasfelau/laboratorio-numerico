@@ -53,7 +53,26 @@ body {
 .shell {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 20px 44px;
+  padding: 32px 20px 20px;
+}
+
+.app-footer {
+  margin: 6px auto 26px;
+  max-width: 1120px;
+  padding: 0 20px;
+}
+
+.app-footer-inner {
+  border: 1px solid #cfe0e6;
+  border-radius: 14px;
+  background: rgba(249, 253, 254, 0.92);
+  padding: 12px 14px;
+  color: #486270;
+  font-size: 0.88rem;
+}
+
+.app-footer-inner p {
+  margin: 4px 0;
 }
 
 .header-card {
@@ -385,6 +404,82 @@ input {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.number-stepper {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfdfd;
+  overflow: hidden;
+}
+
+.number-stepper input[type="number"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+}
+
+.number-stepper input[type="number"]:focus {
+  outline: none;
+}
+
+.number-stepper-controls {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  width: 34px;
+  border-left: 1px solid #d2dde1;
+  background: linear-gradient(180deg, #f2f9fb, #e6f1f6);
+}
+
+.number-stepper-btn {
+  width: 34px;
+  min-width: 34px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #214451;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  background: transparent;
+  cursor: pointer;
+}
+
+.number-stepper-btn:first-child {
+  border-bottom: 1px solid #d2dde1;
+}
+
+.number-stepper-btn:hover {
+  background: rgba(15, 139, 141, 0.12);
+  transform: none;
+  filter: none;
+}
+
+#globalIteraciones::-webkit-outer-spin-button,
+#globalIteraciones::-webkit-inner-spin-button,
+#globalTolerancia::-webkit-outer-spin-button,
+#globalTolerancia::-webkit-inner-spin-button,
+#globalPrecision::-webkit-outer-spin-button,
+#globalPrecision::-webkit-inner-spin-button,
+#globalPorcentaje::-webkit-outer-spin-button,
+#globalPorcentaje::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#globalIteraciones,
+#globalTolerancia,
+#globalPrecision,
+#globalPorcentaje {
+  -moz-appearance: textfield;
+}
+
 button {
   border: none;
   padding: 11px 14px;
@@ -537,9 +632,110 @@ h2 {
   line-height: 1;
 }
 
+.theory-help-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 1.3rem;
+  line-height: 1;
+  z-index: 40;
+  color: #f0fffe;
+  background: linear-gradient(120deg, #1a6f8a, #0f8b8d);
+  box-shadow: 0 12px 24px rgba(10, 40, 50, 0.28);
+  animation: theory-fab-attention 4.2s ease-in-out infinite;
+}
+
+.theory-help-fab:hover {
+  transform: translateY(-1px) scale(1.03);
+  filter: brightness(1.06);
+}
+
+.theory-help-fab:focus-visible {
+  outline: 3px solid rgba(47, 111, 237, 0.35);
+  outline-offset: 2px;
+}
+
+.theory-help-dialog {
+  width: min(760px, calc(100vw - 30px));
+}
+
+.theory-help-content {
+  border: 1px solid #d9e5ea;
+  background: #f8fbfd;
+  border-radius: 10px;
+  padding: 12px;
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  color: #173947;
+}
+
+.theory-help-block {
+  margin-bottom: 12px;
+}
+
+.theory-help-block:last-child {
+  margin-bottom: 0;
+}
+
+.theory-help-block h4 {
+  margin: 0 0 6px;
+  font-size: 0.96rem;
+  color: #214451;
+}
+
+.theory-help-item {
+  margin: 0 0 6px;
+}
+
+.theory-help-item:last-child {
+  margin-bottom: 0;
+}
+
+.theory-help-item .latex-math {
+  min-height: 22px;
+}
+
+.theory-help-item small {
+  display: block;
+  color: #4c6771;
+  margin-top: 2px;
+}
+
+@keyframes theory-fab-attention {
+  0%,
+  85%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 12px 24px rgba(10, 40, 50, 0.28);
+  }
+  89% {
+    transform: translateY(-8px);
+    box-shadow: 0 16px 30px rgba(15, 139, 141, 0.42);
+  }
+  93% {
+    transform: translateY(0);
+  }
+  96% {
+    transform: translateY(-4px);
+  }
+}
+
 @media (max-width: 700px) {
   .fixed-help-dialog {
     width: calc(100vw - 20px);
+  }
+
+  .theory-help-fab {
+    right: 14px;
+    bottom: 14px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
   }
 }
 
