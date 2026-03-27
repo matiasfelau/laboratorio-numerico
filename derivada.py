@@ -9,9 +9,16 @@ EXPRESION_TEXTO = "(x + 1) ** (1 / 3)"
 VARIABLE_TEXTO = "x"
 
 
+def _normalizar_texto_matematico(texto):
+    return str(texto).replace("π", "pi").replace("ℯ", "euler").strip()
+
+
 def calcular_derivada(expresion_texto, variable_texto="x"):
     variable = sp.Symbol(variable_texto)
-    expresion = sp.sympify(expresion_texto)
+    expresion = sp.sympify(
+        _normalizar_texto_matematico(expresion_texto),
+        locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E},
+    )
     derivada = sp.diff(expresion, variable)
     derivada_simplificada = sp.simplify(derivada)
     return expresion, derivada, derivada_simplificada

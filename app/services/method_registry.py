@@ -9,6 +9,7 @@ class FieldDefinition:
     kind: str
     default: Any
     options: list[str] | None = None
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -24,9 +25,9 @@ def get_methods() -> list[MethodDefinition]:
         MethodDefinition(
             key="newton_raphson",
             label="Newton-Raphson",
-            description="Aproxima una raíz.",
+            description="Calcula una aproximación de raíz para f(x)=0.",
             fields=[
-                FieldDefinition("f_expr", "Expresión", "str", ""),
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
                 FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
             ],
@@ -34,20 +35,20 @@ def get_methods() -> list[MethodDefinition]:
         MethodDefinition(
             key="biseccion",
             label="Bisección",
-            description="Aproxima una raíz.",
+            description="Calcula una aproximación de raíz en un intervalo [a, b].",
             fields=[
-                FieldDefinition("f_expr", "Expresión", "str", ""),
-                FieldDefinition("a", "Inicio del intervalo", "float", ""),
-                FieldDefinition("b", "Final del intervalo", "float", ""),
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
+                FieldDefinition("a", "Extremo izquierdo (a)", "float", ""),
+                FieldDefinition("b", "Extremo derecho (b)", "float", ""),
                 FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
             ],
         ),
         MethodDefinition(
             key="punto_fijo",
             label="Punto fijo",
-            description="Aproxima una raíz.",
+            description="Calcula una aproximación de raíz a partir de g(x).",
             fields=[
-                FieldDefinition("g_expr", "Expresión", "str", ""),
+                FieldDefinition("g_expr", "Función g(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
                 FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
             ],
@@ -55,11 +56,36 @@ def get_methods() -> list[MethodDefinition]:
         MethodDefinition(
             key="aceleracion_aitken",
             label="Aceleración de Aitken",
-            description="Aproxima una raíz.",
+            description="Acelera la convergencia del método de punto fijo.",
             fields=[
-                FieldDefinition("g_expr", "Expresión", "str", ""),
+                FieldDefinition("g_expr", "Función g(x)", "str", ""),
                 FieldDefinition("x", "Punto inicial", "float", ""),
                 FieldDefinition("tipo", "Tipo de error", "str", "Absoluto", ["Absoluto", "Relativo"]),
+            ],
+        ),
+        MethodDefinition(
+            key="lagrange",
+            label="Interpolación de Lagrange",
+            description="Construye el polinomio interpolante y muestra métricas según el modo seleccionado.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x)", "str", "", optional=True),
+                FieldDefinition("x_nodos", "Nodos x (separados por coma)", "str", "1, 2, 3"),
+                FieldDefinition("y_nodos", "Imágenes y (separadas por coma)", "str", "", optional=True),
+                FieldDefinition("x_eval", "Punto de evaluación", "str", "2.5"),
+            ],
+        ),
+        MethodDefinition(
+            key="diferencia_finita",
+            label="Diferencia finita",
+            description="Calcula la derivada aproximada en un punto por expresión o por imágenes.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x) (opcional)", "str", "", optional=True),
+                FieldDefinition("x", "Punto de evaluación x", "float", "1"),
+                FieldDefinition("h", "Paso h", "float", "0.5"),
+                FieldDefinition("metodo", "Esquema", "str", "Central", ["Progresivo", "Regresivo", "Central"]),
+                FieldDefinition("y_xm1", "Imagen f(x-h) (opcional)", "float", "", optional=True),
+                FieldDefinition("y_x", "Imagen f(x) (opcional)", "float", "", optional=True),
+                FieldDefinition("y_xp1", "Imagen f(x+h) (opcional)", "float", "", optional=True),
             ],
         ),
     ]
