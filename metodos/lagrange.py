@@ -99,10 +99,9 @@ def redondear_expresion(expr, precision):
 
 
 def simplificar_expresion_racional(expr, precision):
-	# Intenta recuperar constantes conocidas (pi/e) y fracciones exactas,
-	# reduciendo ruido numérico de entradas en float.
+	# Reduce ruido numerico de floats sin introducir constantes artificiales.
 	try:
-		expr = sp.nsimplify(expr, [sp.pi, sp.E], tolerance=1e-10)
+		expr = sp.nsimplify(expr, tolerance=1e-10)
 	except Exception:
 		pass
 
@@ -117,15 +116,40 @@ def simplificar_expresion_racional(expr, precision):
 
 
 def _simbolizar_valor(value, precision):
-	try:
-		return sp.nsimplify(float(value), [sp.pi, sp.E], tolerance=1e-10)
-	except Exception:
-		frac = Fraction(float(value)).limit_denominator(max(10, 10 ** max(1, int(precision))))
-		return sp.Rational(frac.numerator, frac.denominator)
+	frac = Fraction(float(value)).limit_denominator(max(10, 10 ** max(1, int(precision))))
+	return sp.Rational(frac.numerator, frac.denominator)
 
 
 def _simbolizar_lista(values, precision):
 	return [_simbolizar_valor(v, precision) for v in values]
+
+
+def _limpiar_coeficientes_casi_cero(expr, variable, umbral):
+	try:
+		poly = sp.Poly(sp.expand(expr), variable)
+	except Exception:
+		return expr
+
+	coeffs = poly.all_coeffs()
+	grado = len(coeffs) - 1
+	resultado = 0
+	for i, coef in enumerate(coeffs):
+		coef_float = float(coef)
+		if abs(coef_float) < umbral:
+			coef_float = 0.0
+		resultado += sp.Float(coef_float) * variable ** (grado - i)
+
+	return sp.expand(resultado)
+
+
+def _formatear_expresion_salida(expr, variable, precision, tiene_funcion_real):
+	if tiene_funcion_real:
+		return simplificar_expresion_racional(expr, precision)
+
+	# En modo imagenes se prioriza una salida numerica legible.
+	expr_numerica = sp.expand(sp.N(expr, 16))
+	expr_numerica = _limpiar_coeficientes_casi_cero(expr_numerica, variable, umbral=1e-12)
+	return redondear_expresion(expr_numerica, max(12, int(precision) + 4))
 
 
 def lagrange(f_expr_texto, x_nodos, x_eval, y_nodos=None):
@@ -180,7 +204,7 @@ def lagrange(f_expr_texto, x_nodos, x_eval, y_nodos=None):
 		y_nodos_sim = _simbolizar_lista(y_nodos, precision)
 
 	expresion_final = expresion_polinomio_lagrange(x_nodos_sim, y_nodos_sim)
-	expresion_final = simplificar_expresion_racional(expresion_final, precision)
+	expresion_final = _formatear_expresion_salida(expresion_final, x, precision, tiene_funcion_real)
 	expresion_final_latex = sp.latex(expresion_final)
 	if errores_locales and errores_locales[0][1] is not None:
 		_, e_local = errores_locales[0]
