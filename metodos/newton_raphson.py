@@ -1,3 +1,5 @@
+"""Método de Newton-Raphson con salida tabular."""
+
 import numpy as np
 from scipy.differentiate import derivative
 from tabulate import tabulate
@@ -8,7 +10,9 @@ from utils.configuracion import establecer_configuracion
 def f(x):
     return x * np.exp(-x)
 
+
 def newton_raphson(x, tipo="absoluto"):
+    """Ejecuta iteraciones de Newton respetando redondeo configurado."""
     p, calcular_error, criterio_parada = establecer_configuracion(tipo)
 
     tabla = []
@@ -31,6 +35,7 @@ def newton_raphson(x, tipo="absoluto"):
 
         x = xn
 
-    print(tabulate(tabla, headers=["i", "xn", "f(xn)", "f'(xn)", "xn+1", "e"], tablefmt="grid", floatfmt=f".{precision}f"))
+    print(tabulate(tabla, headers=["i", "xn", "f(xn)", "f'(xn)", "xn+1", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
 
-newton_raphson(-1)
+if __name__ == "__main__":
+    newton_raphson(-1)

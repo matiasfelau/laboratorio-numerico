@@ -46,3 +46,12 @@ Thumbs.db
 # Local environment variables
 .env
 .env.*
+
+# Flask / runtime local
+instance/
+*.log
+
+# Local Python/tooling
+.python-version
+.hypothesis/
+.cache/

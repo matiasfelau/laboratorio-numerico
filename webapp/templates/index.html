@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simulador de Métodos Numéricos</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="background-orb orb-a"></div>
+    <div class="background-orb orb-b"></div>
+
+    <main class="shell">
+      <section class="header-card reveal">
+        <p class="eyebrow">Modelado y Simulación</p>
+        <h1>Simulador de Métodos Numéricos</h1>
+        <p class="lead">Elegí un método, completá los datos y analizá resultados y gráficos en tiempo real.</p>
+      </section>
+
+      <section class="stacked-layout reveal delay-1">
+        <div class="panel section-panel">
+          <h2>Parámetros globales</h2>
+          <div class="global-grid">
+            <div class="field">
+              <label for="globalIteraciones">Iteraciones</label>
+              <input id="globalIteraciones" type="number" min="1" step="1" value="100">
+            </div>
+            <div class="field">
+              <label for="globalTolerancia">Tolerancia (10^-x)</label>
+              <div class="input-with-prefix">
+                <span class="input-prefix">10^-</span>
+                <input id="globalTolerancia" type="number" min="0" step="1" value="6">
+              </div>
+            </div>
+            <div class="field">
+              <label for="globalPrecision">Precisión</label>
+              <input id="globalPrecision" type="number" min="0" step="1" value="8">
+            </div>
+            <div class="field">
+              <label for="globalPorcentaje">Porcentaje</label>
+              <div class="input-with-suffix">
+                <input id="globalPorcentaje" type="number" min="0" step="any" value="1">
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel section-panel">
+          <h2>Parámetros del método</h2>
+          <label for="methodSelect">Método</label>
+          <select id="methodSelect"></select>
+          <p id="methodDescription" class="description"></p>
+          <form id="methodForm" class="method-form"></form>
+          <div id="latexPreviewBox" class="latex-preview" hidden>
+            <p class="latex-title">Previsualización de la expresión</p>
+            <div id="latexPreviewMath" class="latex-math">\(\)</div>
+            <p id="latexPreviewError" class="latex-error" hidden></p>
+          </div>
+          <button id="runButton" type="button">Ejecutar</button>
+        </div>
+
+        <div class="panel section-panel result-panel">
+          <div class="result-title-row">
+            <h2>Tabla de resultados</h2>
+            <span id="statusBadge" class="badge idle">Listo</span>
+          </div>
+          <div id="outputTable" class="output-table-wrap output-empty">
+            Todavía no hay resultados. Ejecutá un método para comenzar.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel chart-panel reveal delay-2 section-panel">
+        <div class="chart-header">
+          <div>
+            <h2>Visualización Gráfica</h2>
+          </div>
+        </div>
+
+        <div id="plotContainer" class="plot-container">
+          <div id="plotlyChart" class="plotly-chart" aria-label="Gráfico de función"></div>
+          <div id="plotMessage" class="plot-message">Ejecutá un método para generar el gráfico.</div>
+        </div>
+      </section>
+
+      <section class="panel section-panel debug-panel reveal delay-2">
+        <h2>Configuración</h2>
+        <div class="field field-switch">
+          <label for="globalDebugMode">Modo de depuración</label>
+          <label class="toggle">
+            <input id="globalDebugMode" type="checkbox">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer" aria-label="Información institucional">
+      <div class="app-footer-inner">
+        <p>© 2026 - UADE | Facultad de Ingeniería y Ciencias Exactas | Ingeniería en Informática | Modelado y Simulación.</p>
+        <p>Estudiante: Matías Felau | Contacto: matiasfelau@gmail.com</p>
+      </div>
+    </footer>
+
+    <button id="methodTheoryButton" class="theory-help-fab" type="button" title="Ver fórmulas del método" aria-label="Ver fórmulas del método">?</button>
+
+    <div id="methodTheoryModal" class="fixed-help-modal theory-help-modal" hidden>
+      <div id="methodTheoryBackdrop" class="fixed-help-backdrop"></div>
+      <div class="fixed-help-dialog theory-help-dialog" role="dialog" aria-modal="true" aria-labelledby="methodTheoryTitle">
+        <div class="fixed-help-header">
+          <h3 id="methodTheoryTitle">Fórmulas del método</h3>
+          <button id="methodTheoryClose" class="fixed-help-close" type="button" aria-label="Cerrar">×</button>
+        </div>
+        <p id="methodTheorySubtitle" class="fixed-help-text"></p>
+        <div id="methodTheoryContent" class="theory-help-content"></div>
+      </div>
+    </div>
+
+    <button id="fixedPointHelpButton" class="fixed-help-inline-button" type="button" title="Ayuda para construir g(x)" aria-label="Ayuda para construir g(x)" hidden>!</button>
+
+    <div id="fixedPointHelpModal" class="fixed-help-modal" hidden>
+      <div id="fixedPointHelpBackdrop" class="fixed-help-backdrop"></div>
+      <div class="fixed-help-dialog" role="dialog" aria-modal="true" aria-labelledby="fixedPointHelpTitle">
+        <div class="fixed-help-header">
+          <h3 id="fixedPointHelpTitle">Asistente para g(x)</h3>
+          <button id="fixedPointHelpClose" class="fixed-help-close" type="button" aria-label="Cerrar">×</button>
+        </div>
+        <p class="fixed-help-text">Ingresá una función f(x) y te sugerimos una g(x) para aplicar punto fijo.</p>
+        <label for="fixedPointHelpInput">Función f(x)</label>
+        <input id="fixedPointHelpInput" type="text" placeholder="Ej: x^3 - x - 1">
+        <div id="fixedPointHelpPreviewBox" class="latex-preview" hidden>
+          <p class="latex-title">Previsualización de f(x)</p>
+          <div id="fixedPointHelpPreviewMath" class="latex-math">\(\)</div>
+          <p id="fixedPointHelpPreviewError" class="latex-error" hidden></p>
+        </div>
+        <button id="fixedPointHelpSuggest" type="button">Recomendar g(x)</button>
+        <div id="fixedPointHelpResult" class="fixed-help-result">Esperando datos...</div>
+      </div>
+    </div>
+
+    <script>
+      window.MathJax = {
+        tex: { inlineMath: [["\\(", "\\)"]] },
+        svg: { fontCache: "global" }
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

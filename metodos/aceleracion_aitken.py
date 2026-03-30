@@ -1,3 +1,5 @@
+"""Aceleración de Aitken aplicada sobre iteración de punto fijo."""
+
 import numpy as np
 from scipy.differentiate import derivative
 from tabulate import tabulate
@@ -7,7 +9,9 @@ from utils.configuracion import establecer_configuracion
 def g(x):
     return np.exp(-x)
 
+
 def aceleracion_aitken(x, tipo):
+    """Ejecuta el esquema de Aitken preservando reglas de error existentes."""
     p, calcular_error, criterio_parada = establecer_configuracion(tipo)
 
     tabla = []
@@ -37,4 +41,5 @@ def aceleracion_aitken(x, tipo):
 
     print(tabulate(tabla, headers=["i", "x", "xn+1","xn+2","x*", "e"], tablefmt="grid", floatfmt=f".{p.precision}f"))
 
-aceleracion_aitken(1)
+if __name__ == "__main__":
+    aceleracion_aitken(1, "absoluto")
