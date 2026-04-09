@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 import sympy as sp
@@ -211,7 +212,10 @@ def create_app() -> Flask:
 
 def main() -> None:
     app = create_app()
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    host = os.getenv("APP_HOST", "127.0.0.1")
+    port = int(os.getenv("APP_PORT", "5000"))
+    debug = os.getenv("APP_DEBUG", "1") not in {"0", "false", "False"}
+    app.run(host=host, port=port, debug=debug)
 
 
 def _expression_key(method_key: str) -> str:

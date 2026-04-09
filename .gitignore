@@ -50,6 +50,11 @@ Thumbs.db
 # Flask / runtime local
 instance/
 *.log
+.server.pid
+
+# Docker
+docker-data/
+*.pid
 
 # Local Python/tooling
 .python-version

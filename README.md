@@ -55,6 +55,30 @@ pip install -r requirements.txt
 
 Para detener el servidor, usar `Ctrl+C` en la consola donde se ejecuto.
 
+## Ejecucion con Docker
+
+1. Construir imagen:
+
+```powershell
+docker build -t simulador-modelado .
+```
+
+2. Ejecutar contenedor:
+
+```powershell
+docker run --rm -p 5000:5000 simulador-modelado
+```
+
+Alternativa con Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+Abrir en navegador:
+
+- `http://127.0.0.1:5000`
+
 ## Desarrollo
 
 - Con Flask en debug, cambios en codigo/plantillas suelen reflejarse con recarga de pagina.
