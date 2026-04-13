@@ -771,6 +771,24 @@ h2 {
   justify-content: center;
 }
 
+.integration-result-box {
+  min-height: 140px;
+  max-height: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.integration-result-latex {
+  width: 100%;
+  font-size: clamp(1.5rem, 3.2vw, 2.2rem);
+  font-weight: 700;
+  color: #123743;
+  overflow-x: auto;
+  padding: 6px 4px;
+}
+
 .result-table {
   width: 100%;
   border-collapse: collapse;

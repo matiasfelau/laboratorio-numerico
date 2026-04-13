@@ -4,6 +4,9 @@ const methodForm = document.getElementById("methodForm");
 const runButton = document.getElementById("runButton");
 const outputTable = document.getElementById("outputTable");
 const statusBadge = document.getElementById("statusBadge");
+const resultPanelTitle = document.querySelector(".result-title-row h2");
+const integrationResultPanel = document.getElementById("integrationResultPanel");
+const integrationResultSection = document.getElementById("integrationResultSection");
 const chartPanel = document.querySelector(".chart-panel");
 const plotlyChart = document.getElementById("plotlyChart");
 const plotMessage = document.getElementById("plotMessage");
@@ -164,6 +167,72 @@ const THEORY_BY_METHOD = {
       },
     ],
   },
+  trapecio: {
+    subtitle: "Integración por Trapecio",
+    blocks: [
+      {
+        title: "Trapecio simple",
+        items: [{ latex: "\\int_a^b f(x)\\,dx\\approx\\frac{b-a}{2}\\left[f(a)+f(b)\\right]" }],
+      },
+      {
+        title: "Trapecio compuesto",
+        items: [
+          {
+            latex:
+              "\\int_a^b f(x)\\,dx\\approx\\frac{h}{2}\\left[f(x_0)+2\\sum_{i=1}^{n-1}f(x_i)+f(x_n)\\right],\\quad h=\\frac{b-a}{n}",
+          },
+        ],
+      },
+    ],
+  },
+  simpson_13: {
+    subtitle: "Integración por Simpson 1/3",
+    blocks: [
+      {
+        title: "Simpson 1/3 simple",
+        items: [
+          {
+            latex:
+              "\\int_a^b f(x)\\,dx\\approx\\frac{h}{3}\\left[f(x_0)+4f(x_1)+f(x_2)\\right],\\quad h=\\frac{b-a}{2}",
+          },
+        ],
+      },
+      {
+        title: "Simpson 1/3 compuesto",
+        items: [
+          {
+            latex:
+              "\\int_a^b f(x)\\,dx\\approx\\frac{h}{3}\\left[f(x_0)+f(x_n)+4\\sum_{i\\,\\text{impar}}f(x_i)+2\\sum_{i\\,\\text{par}}f(x_i)\\right]",
+            note: "Requiere n par",
+          },
+        ],
+      },
+    ],
+  },
+  simpson_38: {
+    subtitle: "Integración por Simpson 3/8",
+    blocks: [
+      {
+        title: "Simpson 3/8 simple",
+        items: [
+          {
+            latex:
+              "\\int_a^b f(x)\\,dx\\approx\\frac{3h}{8}\\left[f(x_0)+3f(x_1)+3f(x_2)+f(x_3)\\right],\\quad h=\\frac{b-a}{3}",
+          },
+        ],
+      },
+      {
+        title: "Simpson 3/8 compuesto",
+        items: [
+          {
+            latex:
+              "\\int_a^b f(x)\\,dx\\approx\\frac{3h}{8}\\left[f(x_0)+f(x_n)+3\\sum_{i\\not\\equiv0\\,(3)}f(x_i)+2\\sum_{i\\equiv0\\,(3)}f(x_i)\\right]",
+            note: "Requiere n múltiplo de 3",
+          },
+        ],
+      },
+    ],
+  },
 };
 
 let persistedState = {
@@ -191,6 +260,17 @@ function isDiferenciaFinitaMethod(method) {
 
 function isFixedPointHelperMethod(method) {
   return Boolean(method && ["punto_fijo", "aceleracion_aitken"].includes(method.key));
+}
+
+function isIntegrationMethod(method) {
+  return Boolean(method && ["trapecio", "simpson_13", "simpson_38"].includes(method.key));
+}
+
+function updateResultPanelTitle(method) {
+  if (!resultPanelTitle) {
+    return;
+  }
+  resultPanelTitle.textContent = isIntegrationMethod(method) ? "Tabla auxiliar" : "Tabla de resultados";
 }
 
 function supportsPlot(method) {
@@ -228,6 +308,27 @@ function clearPlot() {
 function clearOutput() {
   outputTable.classList.add("output-empty");
   outputTable.textContent = "Todavía no hay resultados. Ejecutá un método para comenzar.";
+  clearIntegrationResult();
+}
+
+function clearIntegrationResult() {
+  if (!integrationResultSection) {
+    return;
+  }
+  integrationResultSection.classList.add("output-empty");
+  integrationResultSection.innerHTML = "Todavía no hay resultado.";
+}
+
+function syncIntegrationResultPanel(method) {
+  if (!integrationResultPanel) {
+    return;
+  }
+
+  const show = isIntegrationMethod(method);
+  integrationResultPanel.hidden = !show;
+  if (!show) {
+    clearIntegrationResult();
+  }
 }
 
 function countStepDecimals(stepValue) {
@@ -927,13 +1028,64 @@ function parseTabulateGrid(text) {
 }
 
 function renderTable(parsed) {
+  outputTable.classList.remove("output-empty");
+  outputTable.innerHTML = buildTableHtml(parsed);
+}
+
+function buildTableHtml(parsed) {
   const headers = parsed.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
   const rows = parsed.rows
     .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
     .join("");
 
-  outputTable.classList.remove("output-empty");
-  outputTable.innerHTML = `<table class=\"result-table\"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class=\"result-table\"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function parseIntegrationSummary(text) {
+  const summary = { resultado: null };
+
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("INTEGRACION_RESULTADO:")) {
+      summary.resultado = line.replace("INTEGRACION_RESULTADO:", "").trim();
+    }
+  }
+
+  if (!summary.resultado) {
+    return null;
+  }
+
+  return summary;
+}
+
+function renderIntegrationOutput(rawText) {
+  const summary = parseIntegrationSummary(rawText);
+  if (!summary) {
+    clearIntegrationResult();
+    return false;
+  }
+
+  const parsedTable = parseTabulateGrid(rawText);
+  if (parsedTable) {
+    renderTable(parsedTable);
+  } else {
+    outputTable.classList.add("output-empty");
+    outputTable.textContent = rawText || "Sin salida";
+  }
+
+  if (integrationResultPanel) {
+    integrationResultPanel.hidden = false;
+  }
+
+  if (integrationResultSection) {
+    integrationResultSection.classList.remove("output-empty");
+    integrationResultSection.innerHTML = `<div class="integration-result-latex">\\(I \\approx ${escapeHtml(summary.resultado)}\\)</div>`;
+    if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+      window.MathJax.typesetPromise([integrationResultSection]).catch(() => {});
+    }
+  }
+
+  return true;
 }
 
 function parseLagrangeSummary(text) {
@@ -1069,6 +1221,16 @@ function renderDiferenciaFinitaSummary(summary) {
 
 function renderOutput(rawText, methodKey = null) {
   const text = rawText || "Sin salida";
+
+  if (!["trapecio", "simpson_13", "simpson_38"].includes(methodKey || "")) {
+    clearIntegrationResult();
+  }
+
+  if (["trapecio", "simpson_13", "simpson_38"].includes(methodKey || "")) {
+    if (renderIntegrationOutput(text)) {
+      return;
+    }
+  }
 
   if (methodKey === "lagrange") {
     const lagrangeSummary = parseLagrangeSummary(text);
@@ -2069,6 +2231,8 @@ async function requestPlot(methodOverride = null, paramsOverride = null) {
 function renderForm() {
   const method = selectedMethod();
   if (!method) {
+    updateResultPanelTitle(null);
+    syncIntegrationResultPanel(null);
     methodDescription.textContent = "";
     methodForm.innerHTML = "";
     clearPlot();
@@ -2077,6 +2241,9 @@ function renderForm() {
     updateFixedPointHelpVisibility(null);
     return;
   }
+
+  updateResultPanelTitle(method);
+  syncIntegrationResultPanel(method);
 
   methodDescription.textContent = method.description;
   methodForm.innerHTML = "";

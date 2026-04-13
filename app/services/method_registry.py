@@ -6,6 +6,7 @@ from typing import Any
 
 ERROR_OPTIONS = ["Absoluto", "Relativo"]
 FD_METHOD_OPTIONS = ["Progresivo", "Regresivo", "Central"]
+INTEGRATION_VARIANT_OPTIONS = ["Simple", "Compuesto"]
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,42 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("y_xm1", "Imagen f(x-h) (opcional)", "float", "", optional=True),
                 FieldDefinition("y_x", "Imagen f(x) (opcional)", "float", "", optional=True),
                 FieldDefinition("y_xp1", "Imagen f(x+h) (opcional)", "float", "", optional=True),
+            ],
+        ),
+        MethodDefinition(
+            key="trapecio",
+            label="Integración por Trapecio",
+            description="Calcula una integral definida usando trapecio simple o compuesto.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
+                FieldDefinition("a", "Límite inferior (a)", "float", ""),
+                FieldDefinition("b", "Límite superior (b)", "float", ""),
+                FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
+                FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
+            ],
+        ),
+        MethodDefinition(
+            key="simpson_13",
+            label="Integración por Simpson 1/3",
+            description="Calcula una integral definida usando Simpson 1/3 simple o compuesto.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
+                FieldDefinition("a", "Límite inferior (a)", "float", ""),
+                FieldDefinition("b", "Límite superior (b)", "float", ""),
+                FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
+                FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
+            ],
+        ),
+        MethodDefinition(
+            key="simpson_38",
+            label="Integración por Simpson 3/8",
+            description="Calcula una integral definida usando Simpson 3/8 simple o compuesto.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
+                FieldDefinition("a", "Límite inferior (a)", "float", ""),
+                FieldDefinition("b", "Límite superior (b)", "float", ""),
+                FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
+                FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
             ],
         ),
     ]

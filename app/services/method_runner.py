@@ -14,7 +14,17 @@ from typing import Callable
 import numpy as np
 import sympy as sp
 
-from metodos import aceleracion_aitken, biseccion, diferencia_finita, lagrange, newton_raphson, punto_fijo
+from metodos import (
+    aceleracion_aitken,
+    biseccion,
+    diferencia_finita,
+    lagrange,
+    newton_raphson,
+    punto_fijo,
+    simpson_13,
+    simpson_38,
+    trapecio,
+)
 
 
 MATH_LOCALS = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E}
@@ -67,6 +77,15 @@ class MethodRunner:
             return
         if method_key == "diferencia_finita":
             self._run_diferencia_finita(params)
+            return
+        if method_key == "trapecio":
+            self._run_trapecio(params)
+            return
+        if method_key == "simpson_13":
+            self._run_simpson_13(params)
+            return
+        if method_key == "simpson_38":
+            self._run_simpson_38(params)
             return
 
         raise ValueError(f"Metodo no soportado: {method_key}")
@@ -147,6 +166,27 @@ class MethodRunner:
         x_value = self._parse_numeric_scalar(x_text, "punto x") if x_text else 0.0
         diferencia_finita.diferencia_finita(x_value, h_value, metodo, y_xm1=y_xm1, y_x=y_x, y_xp1=y_xp1)
 
+    def _run_trapecio(self, params: dict[str, object]) -> None:
+        fx = self._build_numeric_function(str(params["f_expr"]))
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        trapecio.trapecio(fx, a, b, variante=variante, n=n_value)
+
+    def _run_simpson_13(self, params: dict[str, object]) -> None:
+        fx = self._build_numeric_function(str(params["f_expr"]))
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        simpson_13.simpson_13(fx, a, b, variante=variante, n=n_value)
+
+    def _run_simpson_38(self, params: dict[str, object]) -> None:
+        fx = self._build_numeric_function(str(params["f_expr"]))
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        simpson_38.simpson_38(fx, a, b, variante=variante, n=n_value)
+
     def _build_numeric_function(self, expression: str) -> Callable[[object], object]:
         x = sp.Symbol("x")
         try:
@@ -191,6 +231,32 @@ class MethodRunner:
 
     def _normalize_math_text(self, text: str) -> str:
         return str(text).replace("π", "pi").replace("ℯ", "euler").strip()
+
+    def _parse_integration_variant_and_n(self, params: dict[str, object]) -> tuple[str, int | None]:
+        variante = str(params.get("variante", "Simple")).strip() or "Simple"
+        variante_key = variante.lower().replace("á", "a")
+
+        if variante_key in {"simple", "s"}:
+            return variante, None
+
+        if variante_key in {"compuesto", "compuesta", "c"}:
+            n_raw = str(params.get("n", "")).strip()
+            if not n_raw:
+                raise ValueError("Debes ingresar la cantidad de subintervalos n para la variante compuesta.")
+            return variante, self._parse_positive_int(n_raw, "subintervalos n")
+
+        raise ValueError("La variante debe ser 'Simple' o 'Compuesto'.")
+
+    def _parse_positive_int(self, text: str, field_name: str) -> int:
+        try:
+            value = int(text)
+        except Exception as exc:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser un entero positivo.") from exc
+
+        if value <= 0:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser > 0.")
+
+        return value
 
     def _parse_numeric_list(self, text: str, field_name: str, enforce_unique: bool = False) -> np.ndarray:
         parts = [item.strip() for item in text.split(",") if item.strip()]
