@@ -316,6 +316,17 @@ input {
   font-weight: 700;
 }
 
+.montecarlo-dimension-row {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.montecarlo-interval-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .lagrange-node-editor:not(.images-mode) .lagrange-node-row {
   grid-template-columns: 1fr auto;
 }

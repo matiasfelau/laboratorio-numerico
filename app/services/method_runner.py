@@ -19,6 +19,7 @@ from metodos import (
     biseccion,
     diferencia_finita,
     lagrange,
+    montecarlo,
     newton_raphson,
     punto_fijo,
     simpson_13,
@@ -86,6 +87,9 @@ class MethodRunner:
             return
         if method_key == "simpson_38":
             self._run_simpson_38(params)
+            return
+        if method_key == "montecarlo":
+            self._run_montecarlo(params)
             return
 
         raise ValueError(f"Metodo no soportado: {method_key}")
@@ -187,6 +191,29 @@ class MethodRunner:
         variante, n_value = self._parse_integration_variant_and_n(params)
         simpson_38.simpson_38(fx, a, b, variante=variante, n=n_value)
 
+    def _run_montecarlo(self, params: dict[str, object]) -> None:
+        lower_bounds = self._parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+        upper_bounds = self._parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+
+        if len(lower_bounds) != len(upper_bounds):
+            raise ValueError("La cantidad de límites inferiores debe coincidir con la de límites superiores.")
+
+        fx = self._build_numeric_multivariable_function(str(params["f_expr"]), dimension_count=len(lower_bounds))
+        n_muestras = self._parse_positive_int(str(params.get("n_muestras", "")).strip(), "cantidad de muestras N")
+        ic_porcentaje = self._parse_percentage(str(params.get("ic_porcentaje", "95")).strip(), "% del intervalo de confianza")
+
+        semilla_raw = str(params.get("semilla", "")).strip()
+        semilla = self._parse_int(semilla_raw, "semilla") if semilla_raw else None
+
+        montecarlo.montecarlo(
+            fx,
+            limites_inferiores=lower_bounds,
+            limites_superiores=upper_bounds,
+            n_muestras=n_muestras,
+            ic_porcentaje=ic_porcentaje,
+            semilla=semilla,
+        )
+
     def _build_numeric_function(self, expression: str) -> Callable[[object], object]:
         x = sp.Symbol("x")
         try:
@@ -205,6 +232,58 @@ class MethodRunner:
                 return np.asarray(value, dtype=float)
             except Exception as exc:
                 raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+        return wrapped
+
+    def _build_numeric_multivariable_function(self, expression: str, dimension_count: int) -> Callable[[object], float]:
+        if dimension_count < 1:
+            raise ValueError("Debes ingresar al menos una dimensión de integración.")
+
+        symbols = [sp.Symbol(f"x{i}") for i in range(1, dimension_count + 1)]
+        locals_map = {**MATH_LOCALS, **{str(symbol): symbol for symbol in symbols}}
+
+        # Alias convencionales para facilitar carga manual en Montecarlo.
+        axis_aliases = ["x", "y", "z", "w", "t"]
+        for idx, alias in enumerate(axis_aliases):
+            if idx < dimension_count:
+                locals_map[alias] = symbols[idx]
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        allowed_symbols = set(symbols)
+        if sym_expr.free_symbols - allowed_symbols:
+            names = ", ".join([str(symbol) for symbol in symbols])
+            aliases = ", ".join(axis_aliases[:dimension_count])
+            raise ValueError(f"La función debe depender solo de: {names} (o aliases: {aliases}).")
+
+        callable_fn = sp.lambdify(symbols, sym_expr, modules=["numpy"])
+
+        def wrapped(point: object) -> float:
+            try:
+                values = np.asarray(point, dtype=float).reshape(-1)
+            except Exception as exc:
+                raise ValueError("Punto de evaluación inválido para Montecarlo.") from exc
+
+            if values.size != dimension_count:
+                raise ValueError("La dimensión de la muestra no coincide con la función de Montecarlo.")
+
+            try:
+                value = callable_fn(*values.tolist())
+                numeric = complex(value)
+            except Exception as exc:
+                raise ValueError("La función de Montecarlo no pudo evaluarse en una muestra.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La función de Montecarlo produjo un valor complejo.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La función de Montecarlo produjo un valor no finito.")
+
+            return real_value
 
         return wrapped
 
@@ -258,6 +337,18 @@ class MethodRunner:
 
         return value
 
+    def _parse_int(self, text: str, field_name: str) -> int:
+        try:
+            return int(text)
+        except Exception as exc:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser un entero.") from exc
+
+    def _parse_percentage(self, text: str, field_name: str) -> float:
+        value = self._parse_numeric_scalar(text, field_name)
+        if value <= 0 or value >= 100:
+            raise ValueError(f"Valor inválido para {field_name}. Debe estar entre 0 y 100 (excluidos).")
+        return float(value)
+
     def _parse_numeric_list(self, text: str, field_name: str, enforce_unique: bool = False) -> np.ndarray:
         parts = [item.strip() for item in text.split(",") if item.strip()]
         if len(parts) < 2:
@@ -275,6 +366,21 @@ class MethodRunner:
             raise ValueError("Los nodos no deben repetirse.")
 
         return nodes
+
+    def _parse_numeric_csv_list(self, text: str, field_name: str) -> np.ndarray:
+        parts = [item.strip() for item in text.split(",") if item.strip()]
+        if not parts:
+            raise ValueError(f"Debes ingresar al menos un valor en {field_name}, separado por coma.")
+
+        try:
+            values = np.asarray([self._parse_numeric_scalar(value, field_name) for value in parts], dtype=float)
+        except Exception as exc:
+            raise ValueError(
+                f"Los valores de {field_name} deben ser numéricos y separados por coma. "
+                "Admite decimales, fracciones (1/3), pi y e/euler."
+            ) from exc
+
+        return values
 
     @contextmanager
     def _temporary_callable(self, module: object, name: str, fn: Callable[[object], object]):

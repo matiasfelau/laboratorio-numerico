@@ -2,11 +2,14 @@
 const methodDescription = document.getElementById("methodDescription");
 const methodForm = document.getElementById("methodForm");
 const runButton = document.getElementById("runButton");
+const auxiliaryPanel = document.getElementById("auxiliaryPanel");
 const outputTable = document.getElementById("outputTable");
 const statusBadge = document.getElementById("statusBadge");
 const resultPanelTitle = document.querySelector(".result-title-row h2");
 const integrationResultPanel = document.getElementById("integrationResultPanel");
 const integrationResultSection = document.getElementById("integrationResultSection");
+const montecarloResultsPanel = document.getElementById("montecarloResultsPanel");
+const montecarloResultsSection = document.getElementById("montecarloResultsSection");
 const chartPanel = document.querySelector(".chart-panel");
 const plotlyChart = document.getElementById("plotlyChart");
 const plotMessage = document.getElementById("plotMessage");
@@ -233,6 +236,31 @@ const THEORY_BY_METHOD = {
       },
     ],
   },
+  montecarlo: {
+    subtitle: "Integración por Montecarlo",
+    blocks: [
+      {
+        title: "Estimación de la integral",
+        items: [
+          {
+            latex:
+              "I_D=\\int_D f(\\mathbf{x})\\,d\\mathbf{x}\\approx V_D\\,\\overline{f}",
+          },
+        ],
+      },
+      {
+        title: "Escalamiento por volumen",
+        items: [
+          {
+            latex: "s_I=V_D\\,s_f,\\quad SE_I=\\frac{s_I}{\\sqrt{N}}",
+          },
+          {
+            latex: "IC_{(1-\\alpha)}: I_D\\pm z_{1-\\alpha/2}\\,SE_I",
+          },
+        ],
+      },
+    ],
+  },
 };
 
 let persistedState = {
@@ -263,7 +291,7 @@ function isFixedPointHelperMethod(method) {
 }
 
 function isIntegrationMethod(method) {
-  return Boolean(method && ["trapecio", "simpson_13", "simpson_38"].includes(method.key));
+  return Boolean(method && ["trapecio", "simpson_13", "simpson_38", "montecarlo"].includes(method.key));
 }
 
 function updateResultPanelTitle(method) {
@@ -277,7 +305,7 @@ function supportsPlot(method) {
   if (!method) {
     return false;
   }
-  return ["newton_raphson", "biseccion", "punto_fijo", "aceleracion_aitken", "lagrange", "diferencia_finita"].includes(method.key);
+  return ["newton_raphson", "biseccion", "punto_fijo", "aceleracion_aitken", "lagrange", "diferencia_finita", "montecarlo"].includes(method.key);
 }
 
 function shouldRenderPlot(method, params = null) {
@@ -309,6 +337,7 @@ function clearOutput() {
   outputTable.classList.add("output-empty");
   outputTable.textContent = "Todavía no hay resultados. Ejecutá un método para comenzar.";
   clearIntegrationResult();
+  clearMontecarloResults();
 }
 
 function clearIntegrationResult() {
@@ -319,12 +348,36 @@ function clearIntegrationResult() {
   integrationResultSection.innerHTML = "Todavía no hay resultado.";
 }
 
-function syncIntegrationResultPanel(method) {
+function clearMontecarloResults() {
+  if (!montecarloResultsSection) {
+    return;
+  }
+  montecarloResultsSection.classList.add("output-empty");
+  montecarloResultsSection.innerHTML = "Todavía no hay resultados.";
+}
+
+function setMontecarloResultsMessage(message) {
+  if (!montecarloResultsSection) {
+    return;
+  }
+  montecarloResultsSection.classList.add("output-empty");
+  montecarloResultsSection.textContent = message;
+}
+
+function syncResultPanels(method) {
+  if (auxiliaryPanel) {
+    auxiliaryPanel.hidden = isMontecarloMethod(method);
+  }
+
+  if (montecarloResultsPanel) {
+    montecarloResultsPanel.hidden = !isMontecarloMethod(method);
+  }
+
   if (!integrationResultPanel) {
     return;
   }
 
-  const show = isIntegrationMethod(method);
+  const show = isIntegrationMethod(method) && !isMontecarloMethod(method);
   integrationResultPanel.hidden = !show;
   if (!show) {
     clearIntegrationResult();
@@ -1058,30 +1111,95 @@ function parseIntegrationSummary(text) {
   return summary;
 }
 
-function renderIntegrationOutput(rawText) {
+function parseTaggedValue(text, tag) {
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith(`${tag}:`)) {
+      return line.replace(`${tag}:`, "").trim();
+    }
+  }
+  return null;
+}
+
+function parseMontecarloSummary(text) {
+  const summary = {
+    dimensiones: parseTaggedValue(text, "MONTECARLO_DIMENSIONES"),
+    volumen: parseTaggedValue(text, "MONTECARLO_VOLUMEN"),
+    mediaMuestral: parseTaggedValue(text, "MONTECARLO_MEDIA_MUESTRAL"),
+    desviacionEstandar: parseTaggedValue(text, "MONTECARLO_DESVIACION_ESTANDAR"),
+    errorEstandar: parseTaggedValue(text, "MONTECARLO_ERROR_ESTANDAR"),
+    icPorcentaje: parseTaggedValue(text, "MONTECARLO_IC_PORCENTAJE"),
+    icInferior: parseTaggedValue(text, "MONTECARLO_IC_INFERIOR"),
+    icSuperior: parseTaggedValue(text, "MONTECARLO_IC_SUPERIOR"),
+  };
+
+  if (!summary.mediaMuestral && !summary.desviacionEstandar && !summary.errorEstandar) {
+    return null;
+  }
+
+  return summary;
+}
+
+function buildMontecarloStatsHtml(summary) {
+  const icText =
+    summary.icInferior && summary.icSuperior
+      ? `[${summary.icInferior}, ${summary.icSuperior}]${summary.icPorcentaje ? ` (${summary.icPorcentaje}%)` : ""}`
+      : null;
+
+  return `
+    <section class="lagrange-summary">
+      <article class="lagrange-card"><h3>Estimación</h3><p>${escapeHtml(summary.estimacion || "N/A")}</p></article>
+      <article class="lagrange-card"><h3>Media muestral</h3><p>${escapeHtml(summary.mediaMuestral || "N/A")}</p></article>
+      <article class="lagrange-card"><h3>Desviación estándar</h3><p>${escapeHtml(summary.desviacionEstandar || "N/A")}</p></article>
+      <article class="lagrange-card"><h3>Error estándar</h3><p>${escapeHtml(summary.errorEstandar || "N/A")}</p></article>
+      <article class="lagrange-card" style="grid-column: 1 / -1;"><h3>Intervalo de confianza</h3><p>${escapeHtml(icText || "N/A")}</p></article>
+    </section>
+  `;
+}
+
+function renderIntegrationOutput(rawText, methodKey = null) {
   const summary = parseIntegrationSummary(rawText);
   if (!summary) {
     clearIntegrationResult();
+    if (methodKey === "montecarlo") {
+      setMontecarloResultsMessage(rawText || "Sin salida");
+    }
     return false;
   }
-
-  const parsedTable = parseTabulateGrid(rawText);
-  if (parsedTable) {
-    renderTable(parsedTable);
+  if (methodKey === "montecarlo") {
+    const montecarloSummary = parseMontecarloSummary(rawText);
+    if (montecarloSummary) {
+      if (montecarloResultsSection) {
+        montecarloResultsSection.classList.remove("output-empty");
+        montecarloResultsSection.innerHTML = buildMontecarloStatsHtml({
+          ...montecarloSummary,
+          estimacion: summary.resultado,
+        });
+      }
+    } else {
+      setMontecarloResultsMessage(rawText || "Sin salida");
+    }
   } else {
-    outputTable.classList.add("output-empty");
-    outputTable.textContent = rawText || "Sin salida";
+    const parsedTable = parseTabulateGrid(rawText);
+    if (parsedTable) {
+      renderTable(parsedTable);
+    } else {
+      outputTable.classList.add("output-empty");
+      outputTable.textContent = rawText || "Sin salida";
+    }
   }
 
-  if (integrationResultPanel) {
-    integrationResultPanel.hidden = false;
-  }
+  if (!isMontecarloMethod({ key: methodKey })) {
+    if (integrationResultPanel) {
+      integrationResultPanel.hidden = false;
+    }
 
-  if (integrationResultSection) {
-    integrationResultSection.classList.remove("output-empty");
-    integrationResultSection.innerHTML = `<div class="integration-result-latex">\\(I \\approx ${escapeHtml(summary.resultado)}\\)</div>`;
-    if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
-      window.MathJax.typesetPromise([integrationResultSection]).catch(() => {});
+    if (integrationResultSection) {
+      integrationResultSection.classList.remove("output-empty");
+      integrationResultSection.innerHTML = `<div class="integration-result-latex">\\(I \\approx ${escapeHtml(summary.resultado)}\\)</div>`;
+      if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+        window.MathJax.typesetPromise([integrationResultSection]).catch(() => {});
+      }
     }
   }
 
@@ -1222,12 +1340,13 @@ function renderDiferenciaFinitaSummary(summary) {
 function renderOutput(rawText, methodKey = null) {
   const text = rawText || "Sin salida";
 
-  if (!["trapecio", "simpson_13", "simpson_38"].includes(methodKey || "")) {
+  if (!["trapecio", "simpson_13", "simpson_38", "montecarlo"].includes(methodKey || "")) {
     clearIntegrationResult();
+    clearMontecarloResults();
   }
 
-  if (["trapecio", "simpson_13", "simpson_38"].includes(methodKey || "")) {
-    if (renderIntegrationOutput(text)) {
+  if (["trapecio", "simpson_13", "simpson_38", "montecarlo"].includes(methodKey || "")) {
+    if (renderIntegrationOutput(text, methodKey)) {
       return;
     }
   }
@@ -1468,6 +1587,175 @@ function parseNodeList(text) {
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function isMontecarloMethod(method) {
+  return Boolean(method && method.key === "montecarlo");
+}
+
+function buildMontecarloDimensionRow(lowerValue = "", upperValue = "") {
+  const row = document.createElement("div");
+  row.className = "lagrange-node-row montecarlo-dimension-row";
+
+  const intervalBox = document.createElement("div");
+  intervalBox.className = "montecarlo-interval-box";
+
+  const lowerField = document.createElement("div");
+  lowerField.className = "lagrange-node-field";
+
+  const lowerInput = document.createElement("input");
+  lowerInput.type = "text";
+  lowerInput.className = "montecarlo-lower";
+  lowerInput.placeholder = "a_i";
+  lowerInput.value = lowerValue;
+  lowerField.appendChild(lowerInput);
+
+  const upperField = document.createElement("div");
+  upperField.className = "lagrange-node-field";
+
+  const upperInput = document.createElement("input");
+  upperInput.type = "text";
+  upperInput.className = "montecarlo-upper";
+  upperInput.placeholder = "b_i";
+  upperInput.value = upperValue;
+  upperField.appendChild(upperInput);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "lagrange-node-remove";
+  removeBtn.textContent = "-";
+  removeBtn.title = "Eliminar dimensión";
+
+  intervalBox.appendChild(lowerField);
+  intervalBox.appendChild(upperField);
+
+  row.appendChild(intervalBox);
+  row.appendChild(removeBtn);
+
+  return row;
+}
+
+function syncHiddenInputsToMontecarloEditor() {
+  const editor = methodForm.querySelector(".montecarlo-dimension-editor");
+  const lowerInputHidden = document.getElementById("lower_bounds");
+  const upperInputHidden = document.getElementById("upper_bounds");
+  if (!editor || !lowerInputHidden || !upperInputHidden) {
+    return;
+  }
+
+  const lowers = parseNodeList(lowerInputHidden.value);
+  const uppers = parseNodeList(upperInputHidden.value);
+  const rowCount = Math.max(lowers.length, uppers.length, 1);
+
+  const rowsContainer = editor.querySelector(".lagrange-node-rows");
+  if (!rowsContainer) {
+    return;
+  }
+
+  rowsContainer.innerHTML = "";
+  for (let i = 0; i < rowCount; i += 1) {
+    rowsContainer.appendChild(buildMontecarloDimensionRow(lowers[i] || "", uppers[i] || ""));
+  }
+}
+
+function syncMontecarloEditorToHidden() {
+  const editor = methodForm.querySelector(".montecarlo-dimension-editor");
+  const lowerInputHidden = document.getElementById("lower_bounds");
+  const upperInputHidden = document.getElementById("upper_bounds");
+  if (!editor || !lowerInputHidden || !upperInputHidden) {
+    return;
+  }
+
+  const rows = Array.from(editor.querySelectorAll(".lagrange-node-row"));
+  const lowers = [];
+  const uppers = [];
+
+  for (const row of rows) {
+    const lowerValue = (row.querySelector(".montecarlo-lower")?.value || "").trim();
+    const upperValue = (row.querySelector(".montecarlo-upper")?.value || "").trim();
+
+    if (!lowerValue && !upperValue) {
+      continue;
+    }
+
+    lowers.push(lowerValue);
+    uppers.push(upperValue);
+  }
+
+  lowerInputHidden.value = lowers.join(", ");
+  upperInputHidden.value = uppers.join(", ");
+}
+
+function setupMontecarloDimensionEditor() {
+  const lowerWrapper = methodForm.querySelector('[data-field-key="lower_bounds"]');
+  const upperWrapper = methodForm.querySelector('[data-field-key="upper_bounds"]');
+  const lowerInputHidden = document.getElementById("lower_bounds");
+  const upperInputHidden = document.getElementById("upper_bounds");
+
+  if (!lowerWrapper || !upperWrapper || !lowerInputHidden || !upperInputHidden) {
+    return;
+  }
+
+  lowerInputHidden.style.display = "none";
+  upperInputHidden.style.display = "none";
+  upperWrapper.style.display = "none";
+
+  if (lowerWrapper.querySelector(".montecarlo-dimension-editor")) {
+    syncHiddenInputsToMontecarloEditor();
+    return;
+  }
+
+  const editor = document.createElement("div");
+  editor.className = "lagrange-node-editor montecarlo-dimension-editor";
+
+  const controls = document.createElement("div");
+  controls.className = "lagrange-node-controls";
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "lagrange-node-add";
+  addBtn.textContent = "+ Agregar dimensión";
+  controls.appendChild(addBtn);
+
+  const rowsContainer = document.createElement("div");
+  rowsContainer.className = "lagrange-node-rows";
+
+  editor.appendChild(controls);
+  editor.appendChild(rowsContainer);
+  lowerWrapper.appendChild(editor);
+
+  syncHiddenInputsToMontecarloEditor();
+
+  addBtn.addEventListener("click", () => {
+    rowsContainer.appendChild(buildMontecarloDimensionRow());
+    syncMontecarloEditorToHidden();
+    persistMethodInputs("montecarlo");
+  });
+
+  rowsContainer.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.classList.contains("lagrange-node-remove")) {
+      return;
+    }
+
+    const rows = rowsContainer.querySelectorAll(".lagrange-node-row");
+    if (rows.length <= 1) {
+      return;
+    }
+
+    const row = target.closest(".lagrange-node-row");
+    if (!row) {
+      return;
+    }
+
+    row.remove();
+    syncMontecarloEditorToHidden();
+    persistMethodInputs("montecarlo");
+  });
+
+  rowsContainer.addEventListener("input", () => {
+    syncMontecarloEditorToHidden();
+    persistMethodInputs("montecarlo");
+  });
 }
 
 function buildLagrangeNodeRow(xValue = "", yValue = "") {
@@ -1785,6 +2073,43 @@ function addDiferenciaFinitaTabs() {
 }
 
 function collectParams(method) {
+  if (isMontecarloMethod(method)) {
+    const fExprValue = (document.getElementById("f_expr")?.value || "").trim();
+    const lowerBoundsValue = (document.getElementById("lower_bounds")?.value || "").trim();
+    const upperBoundsValue = (document.getElementById("upper_bounds")?.value || "").trim();
+    const nMuestrasValue = (document.getElementById("n_muestras")?.value || "").trim();
+    const icPorcentajeValue = (document.getElementById("ic_porcentaje")?.value || "").trim();
+    const semillaValue = (document.getElementById("semilla")?.value || "").trim();
+
+    if (!fExprValue) {
+      throw new Error("Completá el campo 'Función f(x)'.");
+    }
+    if (!lowerBoundsValue || !upperBoundsValue) {
+      throw new Error("Completá los intervalos por dimensión.");
+    }
+    if (!nMuestrasValue) {
+      throw new Error("Completá el campo 'Cantidad de muestras N'.");
+    }
+    if (!icPorcentajeValue) {
+      throw new Error("Completá el campo '% del intervalo de confianza'.");
+    }
+
+    const lowerCount = parseNodeList(lowerBoundsValue).length;
+    const upperCount = parseNodeList(upperBoundsValue).length;
+    if (lowerCount !== upperCount) {
+      throw new Error("La cantidad de límites inferiores debe coincidir con la de límites superiores.");
+    }
+
+    return {
+      f_expr: fExprValue,
+      lower_bounds: lowerBoundsValue,
+      upper_bounds: upperBoundsValue,
+      n_muestras: nMuestrasValue,
+      ic_porcentaje: icPorcentajeValue,
+      semilla: semillaValue,
+    };
+  }
+
   if (isDiferenciaFinitaMethod(method)) {
     const mode = methodForm.dataset.diferenciaFinitaMode === "images" ? "images" : "expr";
     const xValue = (document.getElementById("x")?.value || "").trim();
@@ -2054,6 +2379,10 @@ function applyInitialZoom(range, zoomSteps = 2) {
 }
 
 function toPlotlyTrace(traceDef, index) {
+  if (traceDef && typeof traceDef === "object" && traceDef.plotly && typeof traceDef.plotly === "object") {
+    return traceDef.plotly;
+  }
+
   const points = Array.isArray(traceDef?.points) ? traceDef.points : [];
   const kind = traceDef?.kind === "markers" ? "markers" : "line";
   const name = String(traceDef?.name || `Serie ${index + 1}`);
@@ -2232,7 +2561,7 @@ function renderForm() {
   const method = selectedMethod();
   if (!method) {
     updateResultPanelTitle(null);
-    syncIntegrationResultPanel(null);
+    syncResultPanels(null);
     methodDescription.textContent = "";
     methodForm.innerHTML = "";
     clearPlot();
@@ -2243,7 +2572,7 @@ function renderForm() {
   }
 
   updateResultPanelTitle(method);
-  syncIntegrationResultPanel(method);
+  syncResultPanels(method);
 
   methodDescription.textContent = method.description;
   methodForm.innerHTML = "";
@@ -2262,6 +2591,10 @@ function renderForm() {
 
   if (isDiferenciaFinitaMethod(method)) {
     addDiferenciaFinitaTabs();
+  }
+
+  if (isMontecarloMethod(method)) {
+    setupMontecarloDimensionEditor();
   }
 
   clearPlot();

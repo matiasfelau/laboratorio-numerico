@@ -137,4 +137,17 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
             ],
         ),
+        MethodDefinition(
+            key="montecarlo",
+            label="Integración por Montecarlo",
+            description="Calcula una integral multidimensional por muestreo aleatorio uniforme en un dominio por dimensiones.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x)", "str", ""),
+                FieldDefinition("lower_bounds", "Límites inferiores por dimensión", "str", "0"),
+                FieldDefinition("upper_bounds", "Límites superiores por dimensión", "str", "1"),
+                FieldDefinition("n_muestras", "Cantidad de muestras N", "str", "100"),
+                FieldDefinition("ic_porcentaje", "% del intervalo de confianza", "str", "95"),
+                FieldDefinition("semilla", "Semilla aleatoria (opcional)", "str", "", optional=True),
+            ],
+        ),
     ]

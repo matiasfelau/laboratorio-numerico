@@ -101,6 +101,8 @@ def create_app() -> Flask:
                 traces, latex_text = _build_lagrange_plot_traces(params, x_min, x_max)
             elif method_key == "diferencia_finita":
                 traces, latex_text = _build_diferencia_finita_plot_traces(params, x_min, x_max)
+            elif method_key == "montecarlo":
+                traces, latex_text = _build_montecarlo_plot_traces(params)
             else:
                 expr_key = _expression_key(method_key)
                 expr_text = str(params.get(expr_key, "")).strip()
@@ -250,6 +252,12 @@ def _domain_for_plot(method_key: str, params: dict) -> tuple[float, float]:
         if method_key == "diferencia_finita":
             center = _parse_numeric_scalar(str(params.get("x", "")), "punto x")
             return center - radius, center + radius
+
+        if method_key == "montecarlo":
+            lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+            upper_bounds = _parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+            if len(lower_bounds) == 1 and len(upper_bounds) == 1:
+                return float(lower_bounds[0]), float(upper_bounds[0])
     except Exception:
         return fallback
 
@@ -569,6 +577,160 @@ def _build_sympy_numeric_function(expr_text: str):
         return sp.lambdify(x, expr, modules=["numpy"]), expr
     except Exception as exc:
         raise ValueError("La expresion de la funcion no es valida.") from exc
+
+
+def _build_sympy_numeric_function_nd(expr_text: str, dimension: int):
+    if dimension < 1:
+        raise ValueError("La dimensión debe ser >= 1.")
+
+    symbols = [sp.Symbol(f"x{i}") for i in range(1, dimension + 1)]
+    locals_map = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E}
+    for symbol in symbols:
+        locals_map[str(symbol)] = symbol
+
+    aliases = ["x", "y", "z", "w", "t"]
+    for idx, alias in enumerate(aliases):
+        if idx < dimension:
+            locals_map[alias] = symbols[idx]
+
+    try:
+        expr = sp.sympify(_normalize_math_text(expr_text), locals=locals_map)
+    except Exception as exc:
+        raise ValueError("La expresion de la funcion no es valida.") from exc
+
+    if expr.free_symbols - set(symbols):
+        raise ValueError("La función tiene variables no soportadas para el dominio indicado.")
+
+    return sp.lambdify(symbols, expr, modules=["numpy"]), expr
+
+
+def _parse_numeric_csv_list(text: str, field_name: str) -> np.ndarray:
+    parts = [item.strip() for item in str(text).split(",") if item.strip()]
+    if len(parts) < 1:
+        raise ValueError(f"Debes ingresar al menos un valor en {field_name}.")
+
+    values = [_parse_numeric_scalar(part, field_name) for part in parts]
+    return np.asarray(values, dtype=float)
+
+
+def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[str, object]], str]:
+    expr_text = _normalize_math_text(str(params.get("f_expr", "")))
+    if not expr_text:
+        raise ValueError("Debes ingresar una función para graficar Montecarlo.")
+
+    lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+    upper_bounds = _parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+    if len(lower_bounds) != len(upper_bounds):
+        raise ValueError("La cantidad de límites inferiores debe coincidir con la de límites superiores.")
+
+    dimension = len(lower_bounds)
+    if dimension not in {1, 2}:
+        raise ValueError("La visualización de Montecarlo está disponible para 1D y 2D.")
+
+    n_muestras = int(_parse_numeric_scalar(str(params.get("n_muestras", "200")), "cantidad de muestras N"))
+    n_muestras = max(10, min(n_muestras, 1500))
+    semilla_text = str(params.get("semilla", "")).strip()
+    semilla = int(semilla_text) if semilla_text else 7
+
+    fn, expr = _build_sympy_numeric_function_nd(expr_text, dimension)
+    rng = np.random.default_rng(semilla)
+    samples = rng.uniform(lower_bounds, upper_bounds, size=(n_muestras, dimension))
+
+    traces: list[dict[str, object]] = []
+
+    if dimension == 1:
+        a = float(lower_bounds[0])
+        b = float(upper_bounds[0])
+
+        x_curve = np.linspace(a, b, 401)
+        y_curve = np.asarray(fn(x_curve), dtype=float)
+        curve_points = [[float(xv), float(yv)] for xv, yv in zip(x_curve, y_curve) if math.isfinite(float(yv))]
+        if len(curve_points) < 2:
+            raise ValueError("No se pudo construir la curva en el intervalo indicado.")
+
+        x_curve_vals = [float(point[0]) for point in curve_points]
+        y_curve_vals = [float(point[1]) for point in curve_points]
+
+        y_floor = min(0.0, min(y_curve_vals))
+        y_ceiling = max(0.0, max(y_curve_vals))
+        if abs(y_ceiling - y_floor) < 1e-12:
+            y_floor -= 1.0
+            y_ceiling += 1.0
+
+        x_rand = rng.uniform(a, b, size=n_muestras)
+        y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
+        sim_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+
+        traces.append(
+            {
+                "name": "Área contenida",
+                "plotly": {
+                    "type": "scatter",
+                    "mode": "lines",
+                    "name": "Área contenida",
+                    "x": x_curve_vals,
+                    "y": y_curve_vals,
+                    "fill": "tozeroy",
+                    "fillcolor": "rgba(47, 111, 237, 0.16)",
+                    "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                    "hoverinfo": "skip",
+                },
+            }
+        )
+        traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points})
+        traces.append({"name": "Puntos simulados", "kind": "markers", "points": sim_points})
+    else:
+        x_min = float(lower_bounds[0])
+        x_max = float(upper_bounds[0])
+        y_min = float(lower_bounds[1])
+        y_max = float(upper_bounds[1])
+
+        gx = np.linspace(x_min, x_max, 70)
+        gy = np.linspace(y_min, y_max, 70)
+        z_grid: list[list[float | None]] = []
+        for yv in gy:
+            row: list[float | None] = []
+            for xv in gx:
+                try:
+                    zv = float(fn(float(xv), float(yv)))
+                    if math.isfinite(zv):
+                        row.append(zv)
+                    else:
+                        row.append(None)
+                except Exception:
+                    row.append(None)
+            z_grid.append(row)
+
+        boundary = [
+            [x_min, y_min],
+            [x_max, y_min],
+            [x_max, y_max],
+            [x_min, y_max],
+            [x_min, y_min],
+        ]
+        sim_points = [[float(sample[0]), float(sample[1])] for sample in samples]
+
+        traces.append(
+            {
+                "name": "Curvas de nivel f(x,y)",
+                "plotly": {
+                    "type": "contour",
+                    "name": "Curvas de nivel f(x,y)",
+                    "x": [float(v) for v in gx.tolist()],
+                    "y": [float(v) for v in gy.tolist()],
+                    "z": z_grid,
+                    "showscale": False,
+                    "line": {"width": 1.2, "color": "#2f6fed"},
+                    "colorscale": "Blues",
+                    "contours": {"coloring": "none", "showlabels": False},
+                    "hovertemplate": "x=%{x:.4g}<br>y=%{y:.4g}<br>f=%{z:.4g}<extra></extra>",
+                },
+            }
+        )
+        traces.append({"name": "Área contenida", "kind": "line", "points": boundary})
+        traces.append({"name": "Puntos simulados", "kind": "markers", "points": sim_points})
+
+    return traces, sp.latex(expr)
 
 
 def _parse_numeric_scalar(text: str, field_name: str) -> float:
