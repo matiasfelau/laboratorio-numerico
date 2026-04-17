@@ -103,7 +103,7 @@ def get_methods() -> list[MethodDefinition]:
         ),
         MethodDefinition(
             key="trapecio",
-            label="Integración por Trapecio",
+            label="Trapecio",
             description="Calcula una integral definida usando trapecio simple o compuesto.",
             fields=[
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
@@ -115,7 +115,7 @@ def get_methods() -> list[MethodDefinition]:
         ),
         MethodDefinition(
             key="simpson_13",
-            label="Integración por Simpson 1/3",
+            label="Simpson 1/3",
             description="Calcula una integral definida usando Simpson 1/3 simple o compuesto.",
             fields=[
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
@@ -127,7 +127,7 @@ def get_methods() -> list[MethodDefinition]:
         ),
         MethodDefinition(
             key="simpson_38",
-            label="Integración por Simpson 3/8",
+            label="Simpson 3/8",
             description="Calcula una integral definida usando Simpson 3/8 simple o compuesto.",
             fields=[
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
@@ -139,11 +139,12 @@ def get_methods() -> list[MethodDefinition]:
         ),
         MethodDefinition(
             key="montecarlo",
-            label="Integración por Montecarlo",
+            label="Montecarlo",
             description="Calcula una integral multidimensional por muestreo aleatorio uniforme en un dominio por dimensiones.",
             fields=[
                 FieldDefinition("f_expr", "Función f(x)", "str", ""),
-                FieldDefinition("lower_bounds", "Límites inferiores por dimensión", "str", "0"),
+                FieldDefinition("f_expr_2", "Segunda función g(x) (solo área entre curvas)", "str", "", optional=True),
+                FieldDefinition("lower_bounds", "Límites", "str", "0"),
                 FieldDefinition("upper_bounds", "Límites superiores por dimensión", "str", "1"),
                 FieldDefinition("n_muestras", "Cantidad de muestras N", "str", "100"),
                 FieldDefinition("ic_porcentaje", "% del intervalo de confianza", "str", "95"),

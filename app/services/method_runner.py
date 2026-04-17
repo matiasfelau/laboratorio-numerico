@@ -171,27 +171,40 @@ class MethodRunner:
         diferencia_finita.diferencia_finita(x_value, h_value, metodo, y_xm1=y_xm1, y_x=y_x, y_xp1=y_xp1)
 
     def _run_trapecio(self, params: dict[str, object]) -> None:
-        fx = self._build_numeric_function(str(params["f_expr"]))
+        warnings: list[str] = []
+        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
         trapecio.trapecio(fx, a, b, variante=variante, n=n_value)
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
 
     def _run_simpson_13(self, params: dict[str, object]) -> None:
-        fx = self._build_numeric_function(str(params["f_expr"]))
+        warnings: list[str] = []
+        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
         simpson_13.simpson_13(fx, a, b, variante=variante, n=n_value)
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
 
     def _run_simpson_38(self, params: dict[str, object]) -> None:
-        fx = self._build_numeric_function(str(params["f_expr"]))
+        warnings: list[str] = []
+        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
         simpson_38.simpson_38(fx, a, b, variante=variante, n=n_value)
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
 
     def _run_montecarlo(self, params: dict[str, object]) -> None:
+        mode = str(params.get("montecarlo_mode", "expr")).strip().lower()
+        if mode not in {"expr", "curves"}:
+            mode = "expr"
+
         lower_bounds = self._parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
         upper_bounds = self._parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
 
@@ -205,6 +218,16 @@ class MethodRunner:
         semilla_raw = str(params.get("semilla", "")).strip()
         semilla = self._parse_int(semilla_raw, "semilla") if semilla_raw else None
 
+        gx = None
+        if mode == "curves":
+            if len(lower_bounds) != 1:
+                raise ValueError("Para área entre curvas debes ingresar un solo intervalo [a,b].")
+
+            f_expr_2 = str(params.get("f_expr_2", "")).strip()
+            if not f_expr_2:
+                raise ValueError("Debes ingresar la segunda función g(x) para área entre curvas.")
+            gx = self._build_numeric_multivariable_function(f_expr_2, dimension_count=1)
+
         montecarlo.montecarlo(
             fx,
             limites_inferiores=lower_bounds,
@@ -212,6 +235,8 @@ class MethodRunner:
             n_muestras=n_muestras,
             ic_porcentaje=ic_porcentaje,
             semilla=semilla,
+            segunda_funcion=gx,
+            modo=("entre_curvas" if mode == "curves" else "dominio"),
         )
 
     def _build_numeric_function(self, expression: str) -> Callable[[object], object]:
@@ -232,6 +257,66 @@ class MethodRunner:
                 return np.asarray(value, dtype=float)
             except Exception as exc:
                 raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+        return wrapped
+
+    def _build_numeric_function_newton_cotes(self, expression: str, warnings: list[str]) -> Callable[[object], float]:
+        x = sp.Symbol("x")
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=MATH_LOCALS)
+            if sym_expr.free_symbols - {x}:
+                raise ValueError("La expresion debe depender solo de la variable x.")
+            callable_fn = sp.lambdify(x, sym_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        warned_points: set[float] = set()
+
+        def _to_real_finite(value: object) -> float | None:
+            try:
+                numeric = complex(value)
+            except Exception:
+                return None
+
+            if abs(numeric.imag) > 1e-12:
+                return None
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                return None
+            return real_value
+
+        def wrapped(x_value: object) -> float:
+            try:
+                direct = _to_real_finite(callable_fn(x_value))
+            except Exception:
+                direct = None
+
+            if direct is not None:
+                return direct
+
+            try:
+                x_scalar = float(x_value)
+            except Exception as exc:
+                raise ValueError("La función no pudo evaluarse numéricamente en Newton-Cotes.") from exc
+
+            try:
+                limited = sp.limit(sym_expr, x, sp.Float(x_scalar), dir="+-")
+                limit_value = _to_real_finite(limited.evalf())
+            except Exception:
+                limit_value = None
+
+            if limit_value is None:
+                raise ValueError(f"La función presenta una indeterminación no removible en x={x_scalar}.")
+
+            rounded_x = round(x_scalar, 12)
+            if rounded_x not in warned_points:
+                warned_points.add(rounded_x)
+                warnings.append(
+                    f"Se detectó una indeterminación en x={x_scalar:g}; se reemplazó por el valor del límite para continuar."
+                )
+
+            return limit_value
 
         return wrapped
 

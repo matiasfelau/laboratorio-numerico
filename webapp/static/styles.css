@@ -791,6 +791,25 @@ h2 {
   text-align: center;
 }
 
+.warning-panel {
+  padding: 10px 12px;
+}
+
+.warning-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5c75d;
+  background: #fff6d8;
+  color: #6a5200;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.warning-banner:last-child {
+  margin-bottom: 0;
+}
+
 .integration-result-latex {
   width: 100%;
   font-size: clamp(1.5rem, 3.2vw, 2.2rem);

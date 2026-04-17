@@ -47,9 +47,22 @@ def simpson_38(
     else:
         if n is None:
             raise ValueError("Para Simpson 3/8 compuesto debés ingresar la cantidad de subintervalos n.")
-        n_subintervalos = int(n)
+        n_original = int(n)
+        if n_original < 3:
+            n_subintervalos = 3
+        elif n_original % 3 != 0:
+            n_subintervalos = n_original + (3 - (n_original % 3))
+        else:
+            n_subintervalos = n_original
+
         validar_subintervalos(n_subintervalos, minimo=3, multiplo_de=3)
         n_texto = str(n_subintervalos)
+
+        if n_subintervalos != n_original:
+            print(
+                "INTEGRACION_WARNING: "
+                f"n={n_original} es incompatible con Simpson 3/8 compuesto; se compensó automáticamente a n={n_subintervalos}."
+            )
 
     x_nodos, y_nodos = construir_nodos_evaluados(f, a, b, n_subintervalos)
     resultado = _simpson_38_desde_nodos(x_nodos, y_nodos)

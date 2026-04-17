@@ -8,6 +8,8 @@ const statusBadge = document.getElementById("statusBadge");
 const resultPanelTitle = document.querySelector(".result-title-row h2");
 const integrationResultPanel = document.getElementById("integrationResultPanel");
 const integrationResultSection = document.getElementById("integrationResultSection");
+const integrationWarningsPanel = document.getElementById("integrationWarningsPanel");
+const integrationWarningsSection = document.getElementById("integrationWarningsSection");
 const montecarloResultsPanel = document.getElementById("montecarloResultsPanel");
 const montecarloResultsSection = document.getElementById("montecarloResultsSection");
 const chartPanel = document.querySelector(".chart-panel");
@@ -244,18 +246,36 @@ const THEORY_BY_METHOD = {
         items: [
           {
             latex:
-              "I_D=\\int_D f(\\mathbf{x})\\,d\\mathbf{x}\\approx V_D\\,\\overline{f}",
+              "I_D=\\int_D f(\\mathbf{x})\\,d\\mathbf{x}\\approx V_D\\,\\overline{x}",
+          },
+          {
+            latex: "V_D=\\prod_{j=1}^{d}(b_j-a_j)",
+            note: "Volumen del dominio de integración D",
           },
         ],
       },
       {
-        title: "Escalamiento por volumen",
+        title: "Estadísticos",
         items: [
           {
-            latex: "s_I=V_D\\,s_f,\\quad SE_I=\\frac{s_I}{\\sqrt{N}}",
+            latex: "\\overline{x}=\\frac{1}{N}\\sum_{i=1}^{N}f(\\mathbf{x}_i)",
           },
           {
-            latex: "IC_{(1-\\alpha)}: I_D\\pm z_{1-\\alpha/2}\\,SE_I",
+            latex:
+              "\\sigma_I=V_D\\sqrt{\\frac{1}{N-1}\\sum_{i=1}^{N}(f(\\mathbf{x}_i)-\\overline{x})^2}",
+            note: "Desviación estándar escalada",
+          },
+          {
+            latex: "EE_I=\\frac{\\sigma_I}{\\sqrt{N}}",
+            note: "Error estándar escalado",
+          },
+        ],
+      },
+      {
+        title: "Escalamiento e intervalo de confianza",
+        items: [
+          {
+            latex: "IC_{(1-\\alpha)}: I_D\\pm z_{1-\\alpha/2}\\,EE_I",
           },
         ],
       },
@@ -337,6 +357,7 @@ function clearOutput() {
   outputTable.classList.add("output-empty");
   outputTable.textContent = "Todavía no hay resultados. Ejecutá un método para comenzar.";
   clearIntegrationResult();
+  clearIntegrationWarnings();
   clearMontecarloResults();
 }
 
@@ -364,6 +385,35 @@ function setMontecarloResultsMessage(message) {
   montecarloResultsSection.textContent = message;
 }
 
+function clearIntegrationWarnings() {
+  if (integrationWarningsPanel) {
+    integrationWarningsPanel.hidden = true;
+  }
+  if (!integrationWarningsSection) {
+    return;
+  }
+  integrationWarningsSection.innerHTML = "";
+}
+
+function setIntegrationWarnings(warnings) {
+  const entries = Array.isArray(warnings) ? warnings.filter((item) => String(item || "").trim().length > 0) : [];
+  if (!entries.length) {
+    clearIntegrationWarnings();
+    return;
+  }
+
+  if (integrationWarningsPanel) {
+    integrationWarningsPanel.hidden = false;
+  }
+  if (!integrationWarningsSection) {
+    return;
+  }
+
+  integrationWarningsSection.innerHTML = entries
+    .map((warning) => `<div class="warning-banner">${escapeHtml(warning)}</div>`)
+    .join("");
+}
+
 function syncResultPanels(method) {
   if (auxiliaryPanel) {
     auxiliaryPanel.hidden = isMontecarloMethod(method);
@@ -374,11 +424,15 @@ function syncResultPanels(method) {
   }
 
   if (!integrationResultPanel) {
+    clearIntegrationWarnings();
     return;
   }
 
   const show = isIntegrationMethod(method) && !isMontecarloMethod(method);
   integrationResultPanel.hidden = !show;
+  if (!show) {
+    clearIntegrationWarnings();
+  }
   if (!show) {
     clearIntegrationResult();
   }
@@ -592,6 +646,37 @@ function persistMethodInputs(methodKey) {
     return;
   }
 
+  if (methodKey === "montecarlo") {
+    const previous = persistedState.paramsByMethod[methodKey] || {};
+    const mode = methodForm.dataset.montecarloMode === "curves" ? "curves" : "expr";
+    const next = { ...previous, __montecarlo_mode: mode };
+
+    if (mode === "curves") {
+      next.__montecarlo_curves = {
+        f_expr: values.f_expr ?? "",
+        f_expr_2: values.f_expr_2 ?? "",
+        lower_bounds: values.lower_bounds ?? "",
+        upper_bounds: values.upper_bounds ?? "",
+        n_muestras: values.n_muestras ?? "",
+        ic_porcentaje: values.ic_porcentaje ?? "",
+        semilla: values.semilla ?? "",
+      };
+    } else {
+      next.__montecarlo_expr = {
+        f_expr: values.f_expr ?? "",
+        lower_bounds: values.lower_bounds ?? "",
+        upper_bounds: values.upper_bounds ?? "",
+        n_muestras: values.n_muestras ?? "",
+        ic_porcentaje: values.ic_porcentaje ?? "",
+        semilla: values.semilla ?? "",
+      };
+    }
+
+    persistedState.paramsByMethod[methodKey] = next;
+    savePersistedState();
+    return;
+  }
+
   persistedState.paramsByMethod[methodKey] = values;
   savePersistedState();
 }
@@ -611,6 +696,12 @@ function applyPersistedMethodInputs(methodKey) {
   if (methodKey === "diferencia_finita") {
     const mode = getPersistedDiferenciaFinitaMode();
     applyPersistedDiferenciaFinitaInputsForMode(mode);
+    return;
+  }
+
+  if (methodKey === "montecarlo") {
+    const mode = getPersistedMontecarloMode();
+    applyPersistedMontecarloInputsForMode(mode);
     return;
   }
 
@@ -674,6 +765,58 @@ function getPersistedDiferenciaFinitaMode() {
   return mode === "images" ? "images" : "expr";
 }
 
+function getPersistedMontecarloMode() {
+  const mode = persistedState.paramsByMethod?.montecarlo?.__montecarlo_mode;
+  return mode === "curves" ? "curves" : "expr";
+}
+
+function getMontecarloPersistedModePayload(mode) {
+  const methodValues = persistedState.paramsByMethod?.montecarlo || {};
+  const bucketKey = mode === "curves" ? "__montecarlo_curves" : "__montecarlo_expr";
+  const bucket = methodValues[bucketKey];
+  if (bucket && typeof bucket === "object") {
+    return bucket;
+  }
+
+  return {};
+}
+
+function applyPersistedMontecarloInputsForMode(mode) {
+  const payload = getMontecarloPersistedModePayload(mode);
+
+  const fExprInput = document.getElementById("f_expr");
+  const fExpr2Input = document.getElementById("f_expr_2");
+  const lowerBoundsInput = document.getElementById("lower_bounds");
+  const upperBoundsInput = document.getElementById("upper_bounds");
+  const nInput = document.getElementById("n_muestras");
+  const icInput = document.getElementById("ic_porcentaje");
+  const semillaInput = document.getElementById("semilla");
+
+  if (fExprInput && payload.f_expr != null) {
+    fExprInput.value = String(payload.f_expr);
+  }
+  if (fExpr2Input && payload.f_expr_2 != null) {
+    fExpr2Input.value = String(payload.f_expr_2);
+  }
+  if (lowerBoundsInput && payload.lower_bounds != null) {
+    lowerBoundsInput.value = String(payload.lower_bounds);
+  }
+  if (upperBoundsInput && payload.upper_bounds != null) {
+    upperBoundsInput.value = String(payload.upper_bounds);
+  }
+  if (nInput && payload.n_muestras != null) {
+    nInput.value = String(payload.n_muestras);
+  }
+  if (icInput && payload.ic_porcentaje != null) {
+    icInput.value = String(payload.ic_porcentaje);
+  }
+  if (semillaInput && payload.semilla != null) {
+    semillaInput.value = String(payload.semilla);
+  }
+
+  syncHiddenInputsToMontecarloEditor();
+}
+
 function getDiferenciaFinitaPersistedModePayload(mode) {
   const methodValues = persistedState.paramsByMethod?.diferencia_finita || {};
   const bucketKey = mode === "images" ? "__diferencia_finita_images" : "__diferencia_finita_expr";
@@ -725,7 +868,7 @@ function applyPersistedDiferenciaFinitaInputsForMode(mode) {
 }
 
 function getExpressionInput() {
-  const candidates = [document.getElementById("f_expr"), document.getElementById("g_expr")];
+  const candidates = [document.getElementById("f_expr"), document.getElementById("f_expr_2"), document.getElementById("g_expr")];
   return candidates.find((input) => input && !input.disabled && input.offsetParent !== null) || null;
 }
 
@@ -734,6 +877,20 @@ function clearLatexPreview() {
   latexPreviewMath.textContent = "\\(\\)";
   latexPreviewError.hidden = true;
   latexPreviewError.textContent = "";
+
+  const secondary = methodForm.querySelector(".montecarlo-secondary-latex-preview");
+  if (secondary) {
+    const secondaryMath = secondary.querySelector(".latex-math");
+    const secondaryError = secondary.querySelector(".latex-error");
+    secondary.hidden = true;
+    if (secondaryMath) {
+      secondaryMath.textContent = "\\(\\)";
+    }
+    if (secondaryError) {
+      secondaryError.hidden = true;
+      secondaryError.textContent = "";
+    }
+  }
 }
 
 function renderMathJax() {
@@ -825,6 +982,78 @@ function showLatexError(message) {
   latexPreviewError.textContent = message;
 }
 
+function getOrCreateMontecarloSecondaryLatexPreview() {
+  const gWrapper = methodForm.querySelector('[data-field-key="f_expr_2"]');
+  if (!gWrapper) {
+    return null;
+  }
+
+  let box = gWrapper.querySelector(".montecarlo-secondary-latex-preview");
+  if (box) {
+    return {
+      box,
+      math: box.querySelector(".latex-math"),
+      error: box.querySelector(".latex-error"),
+    };
+  }
+
+  box = document.createElement("div");
+  box.className = "latex-preview montecarlo-secondary-latex-preview";
+  box.hidden = true;
+
+  const title = document.createElement("p");
+  title.className = "latex-title";
+  title.textContent = "Previsualización de la expresión";
+
+  const math = document.createElement("div");
+  math.className = "latex-math";
+  math.textContent = "\\(\\)";
+
+  const error = document.createElement("p");
+  error.className = "latex-error";
+  error.hidden = true;
+
+  box.appendChild(title);
+  box.appendChild(math);
+  box.appendChild(error);
+  gWrapper.appendChild(box);
+
+  return { box, math, error };
+}
+
+function showLatexPreviewIn(boxRef, latexText) {
+  if (!boxRef?.box || !boxRef?.math || !boxRef?.error) {
+    return;
+  }
+
+  boxRef.box.hidden = false;
+  boxRef.error.hidden = true;
+  boxRef.math.innerHTML = `\\(${latexText}\\)`;
+  renderMathJaxForElements([boxRef.math]);
+}
+
+function showLatexErrorIn(boxRef, message) {
+  if (!boxRef?.box || !boxRef?.math || !boxRef?.error) {
+    return;
+  }
+
+  boxRef.box.hidden = false;
+  boxRef.math.textContent = "\\(\\)";
+  boxRef.error.hidden = false;
+  boxRef.error.textContent = message;
+}
+
+function clearLatexPreviewIn(boxRef) {
+  if (!boxRef?.box || !boxRef?.math || !boxRef?.error) {
+    return;
+  }
+
+  boxRef.box.hidden = true;
+  boxRef.math.textContent = "\\(\\)";
+  boxRef.error.hidden = true;
+  boxRef.error.textContent = "";
+}
+
 async function requestLatexPreview(expressionText) {
   const response = await fetch("/api/latex", {
     method: "POST",
@@ -839,6 +1068,55 @@ async function requestLatexPreview(expressionText) {
 }
 
 function scheduleLatexPreview() {
+  const method = selectedMethod();
+  const isMontecarloCurves =
+    isMontecarloMethod(method) && methodForm.dataset.montecarloMode === "curves";
+
+  if (isMontecarloCurves) {
+    const fText = (document.getElementById("f_expr")?.value || "").trim();
+    const gText = (document.getElementById("f_expr_2")?.value || "").trim();
+    const gPreview = getOrCreateMontecarloSecondaryLatexPreview();
+
+    if (!fText && !gText) {
+      clearLatexPreview();
+      return;
+    }
+
+    if (latexPreviewTimer) {
+      clearTimeout(latexPreviewTimer);
+    }
+
+    latexPreviewTimer = setTimeout(async () => {
+      if (fText) {
+        try {
+          const fLatex = await requestLatexPreview(fText);
+          showLatexPreview(`f(x)=${fLatex}`);
+        } catch (error) {
+          showLatexError(String(error.message || error));
+        }
+      } else {
+        clearLatexPreview();
+      }
+
+      if (gText) {
+        try {
+          const gLatex = await requestLatexPreview(gText);
+          showLatexPreviewIn(gPreview, `g(x)=${gLatex}`);
+        } catch (error) {
+          showLatexErrorIn(gPreview, String(error.message || error));
+        }
+      } else {
+        clearLatexPreviewIn(gPreview);
+      }
+    }, 220);
+    return;
+  }
+
+  const gPreview = methodForm.querySelector(".montecarlo-secondary-latex-preview");
+  if (gPreview) {
+    gPreview.hidden = true;
+  }
+
   const expressionInput = getExpressionInput();
   if (!expressionInput) {
     clearLatexPreview();
@@ -1111,6 +1389,20 @@ function parseIntegrationSummary(text) {
   return summary;
 }
 
+function parseIntegrationWarnings(text) {
+  const warnings = [];
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("INTEGRACION_WARNING:")) {
+      const warning = line.replace("INTEGRACION_WARNING:", "").trim();
+      if (warning) {
+        warnings.push(warning);
+      }
+    }
+  }
+  return warnings;
+}
+
 function parseTaggedValue(text, tag) {
   for (const rawLine of String(text || "").split("\n")) {
     const line = rawLine.trim();
@@ -1123,6 +1415,7 @@ function parseTaggedValue(text, tag) {
 
 function parseMontecarloSummary(text) {
   const summary = {
+    modo: parseTaggedValue(text, "MONTECARLO_MODO"),
     dimensiones: parseTaggedValue(text, "MONTECARLO_DIMENSIONES"),
     volumen: parseTaggedValue(text, "MONTECARLO_VOLUMEN"),
     mediaMuestral: parseTaggedValue(text, "MONTECARLO_MEDIA_MUESTRAL"),
@@ -1131,6 +1424,8 @@ function parseMontecarloSummary(text) {
     icPorcentaje: parseTaggedValue(text, "MONTECARLO_IC_PORCENTAJE"),
     icInferior: parseTaggedValue(text, "MONTECARLO_IC_INFERIOR"),
     icSuperior: parseTaggedValue(text, "MONTECARLO_IC_SUPERIOR"),
+    casosFavorables: parseTaggedValue(text, "MONTECARLO_CASOS_FAVORABLES"),
+    casosTotales: parseTaggedValue(text, "MONTECARLO_CASOS_TOTALES"),
   };
 
   if (!summary.mediaMuestral && !summary.desviacionEstandar && !summary.errorEstandar) {
@@ -1152,6 +1447,7 @@ function buildMontecarloStatsHtml(summary) {
       <article class="lagrange-card"><h3>Media muestral</h3><p>${escapeHtml(summary.mediaMuestral || "N/A")}</p></article>
       <article class="lagrange-card"><h3>Desviación estándar</h3><p>${escapeHtml(summary.desviacionEstandar || "N/A")}</p></article>
       <article class="lagrange-card"><h3>Error estándar</h3><p>${escapeHtml(summary.errorEstandar || "N/A")}</p></article>
+      <article class="lagrange-card"><h3>Casos favorables</h3><p>${escapeHtml(summary.casosFavorables || "N/A")}</p></article>
       <article class="lagrange-card" style="grid-column: 1 / -1;"><h3>Intervalo de confianza</h3><p>${escapeHtml(icText || "N/A")}</p></article>
     </section>
   `;
@@ -1159,6 +1455,7 @@ function buildMontecarloStatsHtml(summary) {
 
 function renderIntegrationOutput(rawText, methodKey = null) {
   const summary = parseIntegrationSummary(rawText);
+  const warnings = parseIntegrationWarnings(rawText);
   if (!summary) {
     clearIntegrationResult();
     if (methodKey === "montecarlo") {
@@ -1167,6 +1464,7 @@ function renderIntegrationOutput(rawText, methodKey = null) {
     return false;
   }
   if (methodKey === "montecarlo") {
+    clearIntegrationWarnings();
     const montecarloSummary = parseMontecarloSummary(rawText);
     if (montecarloSummary) {
       if (montecarloResultsSection) {
@@ -1180,6 +1478,7 @@ function renderIntegrationOutput(rawText, methodKey = null) {
       setMontecarloResultsMessage(rawText || "Sin salida");
     }
   } else {
+    setIntegrationWarnings(warnings);
     const parsedTable = parseTabulateGrid(rawText);
     if (parsedTable) {
       renderTable(parsedTable);
@@ -1488,8 +1787,38 @@ function buildExpressionToolbar(expressionInput) {
   return toolbar;
 }
 
+function ensureExpressionToolbarForField(fieldKey) {
+  const wrapper = methodForm.querySelector(`[data-field-key="${fieldKey}"]`);
+  if (!wrapper) {
+    return;
+  }
+
+  const input = wrapper.querySelector("input");
+  if (!input) {
+    return;
+  }
+
+  if (wrapper.querySelector(".expr-ops")) {
+    return;
+  }
+
+  wrapper.insertBefore(buildExpressionToolbar(input), input);
+}
+
+function placeLatexPreviewUnderField(fieldKey) {
+  const wrapper = methodForm.querySelector(`[data-field-key="${fieldKey}"]`);
+  if (!wrapper) {
+    clearLatexPreview();
+    return;
+  }
+  wrapper.appendChild(latexPreviewBox);
+}
+
 function placeLatexPreviewUnderExpressionField() {
-  const expressionWrapper = methodForm.querySelector('[data-field-key="f_expr"], [data-field-key="g_expr"]');
+  const method = selectedMethod();
+  const isMontecarloCurves = isMontecarloMethod(method) && methodForm.dataset.montecarloMode === "curves";
+  const fieldKey = isMontecarloCurves ? "f_expr" : (method?.key === "punto_fijo" || method?.key === "aceleracion_aitken" ? "g_expr" : "f_expr");
+  const expressionWrapper = methodForm.querySelector(`[data-field-key="${fieldKey}"]`);
   if (!expressionWrapper) {
     clearLatexPreview();
     return;
@@ -1497,9 +1826,14 @@ function placeLatexPreviewUnderExpressionField() {
 
   const expressionInput = expressionWrapper.querySelector("input");
   if (expressionInput) {
-    expressionWrapper.insertBefore(buildExpressionToolbar(expressionInput), expressionInput);
+    ensureExpressionToolbarForField(fieldKey);
   }
-  expressionWrapper.appendChild(latexPreviewBox);
+  placeLatexPreviewUnderField(fieldKey);
+
+  if (isMontecarloCurves) {
+    ensureExpressionToolbarForField("f_expr_2");
+    getOrCreateMontecarloSecondaryLatexPreview();
+  }
 }
 
 function applyLagrangeMode(mode) {
@@ -1591,6 +1925,101 @@ function parseNodeList(text) {
 
 function isMontecarloMethod(method) {
   return Boolean(method && method.key === "montecarlo");
+}
+
+function applyMontecarloMode(mode) {
+  const fExpr2Wrapper = methodForm.querySelector('[data-field-key="f_expr_2"]');
+  const fExpr2Input = document.getElementById("f_expr_2");
+
+  const normalizedMode = mode === "curves" ? "curves" : "expr";
+  methodForm.dataset.montecarloMode = normalizedMode;
+
+  if (fExpr2Wrapper && fExpr2Input) {
+    const showSecondFunction = normalizedMode === "curves";
+    fExpr2Wrapper.style.display = showSecondFunction ? "grid" : "none";
+    fExpr2Input.disabled = !showSecondFunction;
+    if (showSecondFunction) {
+      ensureExpressionToolbarForField("f_expr_2");
+      placeLatexPreviewUnderField("f_expr");
+      getOrCreateMontecarloSecondaryLatexPreview();
+    } else {
+      placeLatexPreviewUnderField("f_expr");
+    }
+  }
+
+  if (normalizedMode === "curves") {
+    const lowerInputHidden = document.getElementById("lower_bounds");
+    const upperInputHidden = document.getElementById("upper_bounds");
+    if (lowerInputHidden && upperInputHidden) {
+      const firstLower = parseNodeList(lowerInputHidden.value)[0] || "";
+      const firstUpper = parseNodeList(upperInputHidden.value)[0] || "";
+      lowerInputHidden.value = firstLower;
+      upperInputHidden.value = firstUpper;
+      syncHiddenInputsToMontecarloEditor();
+    }
+  }
+
+  const editor = methodForm.querySelector(".montecarlo-dimension-editor");
+  if (editor) {
+    const controls = editor.querySelector(".lagrange-node-controls");
+    if (controls) {
+      controls.style.display = normalizedMode === "curves" ? "none" : "flex";
+    }
+
+    const removeButtons = editor.querySelectorAll(".lagrange-node-remove");
+    removeButtons.forEach((button) => {
+      button.style.display = normalizedMode === "curves" ? "none" : "inline-flex";
+    });
+  }
+
+  const tabs = methodForm.querySelectorAll(".montecarlo-tab");
+  tabs.forEach((tab) => {
+    const isActive = tab.dataset.mode === normalizedMode;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  scheduleLatexPreview();
+}
+
+function switchMontecarloMode(mode) {
+  persistMethodInputs("montecarlo");
+  applyMontecarloMode(mode);
+  applyPersistedMontecarloInputsForMode(mode);
+}
+
+function addMontecarloTabs() {
+  const fExprWrapper = methodForm.querySelector('[data-field-key="f_expr"]');
+  if (!fExprWrapper) {
+    return;
+  }
+
+  const tabs = document.createElement("div");
+  tabs.className = "lagrange-tabs";
+
+  const exprBtn = document.createElement("button");
+  exprBtn.type = "button";
+  exprBtn.className = "lagrange-tab montecarlo-tab";
+  exprBtn.dataset.mode = "expr";
+  exprBtn.textContent = "Bajo una curva";
+  exprBtn.addEventListener("click", () => {
+    switchMontecarloMode("expr");
+  });
+
+  const curvesBtn = document.createElement("button");
+  curvesBtn.type = "button";
+  curvesBtn.className = "lagrange-tab montecarlo-tab";
+  curvesBtn.dataset.mode = "curves";
+  curvesBtn.textContent = "Entre curvas";
+  curvesBtn.addEventListener("click", () => {
+    switchMontecarloMode("curves");
+  });
+
+  tabs.appendChild(exprBtn);
+  tabs.appendChild(curvesBtn);
+  methodForm.insertBefore(tabs, fExprWrapper);
+
+  applyMontecarloMode(getPersistedMontecarloMode());
 }
 
 function buildMontecarloDimensionRow(lowerValue = "", upperValue = "") {
@@ -2074,7 +2503,9 @@ function addDiferenciaFinitaTabs() {
 
 function collectParams(method) {
   if (isMontecarloMethod(method)) {
+    const mode = methodForm.dataset.montecarloMode === "curves" ? "curves" : "expr";
     const fExprValue = (document.getElementById("f_expr")?.value || "").trim();
+    const fExpr2Value = (document.getElementById("f_expr_2")?.value || "").trim();
     const lowerBoundsValue = (document.getElementById("lower_bounds")?.value || "").trim();
     const upperBoundsValue = (document.getElementById("upper_bounds")?.value || "").trim();
     const nMuestrasValue = (document.getElementById("n_muestras")?.value || "").trim();
@@ -2100,8 +2531,19 @@ function collectParams(method) {
       throw new Error("La cantidad de límites inferiores debe coincidir con la de límites superiores.");
     }
 
+    if (mode === "curves") {
+      if (!fExpr2Value) {
+        throw new Error("Completá el campo 'Segunda función g(x)' en la pestaña 'Área entre curvas'.");
+      }
+      if (lowerCount !== 1 || upperCount !== 1) {
+        throw new Error("Para 'Área entre curvas' ingresá un único intervalo [a,b].");
+      }
+    }
+
     return {
+      montecarlo_mode: mode,
       f_expr: fExprValue,
+      f_expr_2: fExpr2Value,
       lower_bounds: lowerBoundsValue,
       upper_bounds: upperBoundsValue,
       n_muestras: nMuestrasValue,
@@ -2594,7 +3036,10 @@ function renderForm() {
   }
 
   if (isMontecarloMethod(method)) {
+    addMontecarloTabs();
     setupMontecarloDimensionEditor();
+    applyPersistedMontecarloInputsForMode(getPersistedMontecarloMode());
+    applyMontecarloMode(getPersistedMontecarloMode());
   }
 
   clearPlot();

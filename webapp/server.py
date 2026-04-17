@@ -614,9 +614,16 @@ def _parse_numeric_csv_list(text: str, field_name: str) -> np.ndarray:
 
 
 def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[str, object]], str]:
+    mode = str(params.get("montecarlo_mode", "expr")).strip().lower()
+    between_curves = mode == "curves"
+
     expr_text = _normalize_math_text(str(params.get("f_expr", "")))
     if not expr_text:
         raise ValueError("Debes ingresar una función para graficar Montecarlo.")
+
+    expr_text_2 = _normalize_math_text(str(params.get("f_expr_2", ""))) if between_curves else ""
+    if between_curves and not expr_text_2:
+        raise ValueError("Debes ingresar una segunda función para graficar área entre curvas.")
 
     lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
     upper_bounds = _parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
@@ -626,6 +633,8 @@ def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[
     dimension = len(lower_bounds)
     if dimension not in {1, 2}:
         raise ValueError("La visualización de Montecarlo está disponible para 1D y 2D.")
+    if between_curves and dimension != 1:
+        raise ValueError("El modo área entre curvas requiere un único intervalo [a,b].")
 
     n_muestras = int(_parse_numeric_scalar(str(params.get("n_muestras", "200")), "cantidad de muestras N"))
     n_muestras = max(10, min(n_muestras, 1500))
@@ -633,6 +642,10 @@ def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[
     semilla = int(semilla_text) if semilla_text else 7
 
     fn, expr = _build_sympy_numeric_function_nd(expr_text, dimension)
+    fn2 = None
+    expr2 = None
+    if between_curves:
+        fn2, expr2 = _build_sympy_numeric_function_nd(expr_text_2, 1)
     rng = np.random.default_rng(semilla)
     samples = rng.uniform(lower_bounds, upper_bounds, size=(n_muestras, dimension))
 
@@ -643,42 +656,213 @@ def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[
         b = float(upper_bounds[0])
 
         x_curve = np.linspace(a, b, 401)
-        y_curve = np.asarray(fn(x_curve), dtype=float)
-        curve_points = [[float(xv), float(yv)] for xv, yv in zip(x_curve, y_curve) if math.isfinite(float(yv))]
-        if len(curve_points) < 2:
-            raise ValueError("No se pudo construir la curva en el intervalo indicado.")
+        if between_curves:
+            y_curve_1 = np.asarray(fn(x_curve), dtype=float)
+            y_curve_2 = np.asarray(fn2(x_curve), dtype=float)
 
-        x_curve_vals = [float(point[0]) for point in curve_points]
-        y_curve_vals = [float(point[1]) for point in curve_points]
+            curve_points_1: list[list[float]] = []
+            curve_points_2: list[list[float]] = []
+            x_fill: list[float] = []
+            y_lower: list[float] = []
+            y_upper: list[float] = []
 
-        y_floor = min(0.0, min(y_curve_vals))
-        y_ceiling = max(0.0, max(y_curve_vals))
-        if abs(y_ceiling - y_floor) < 1e-12:
-            y_floor -= 1.0
-            y_ceiling += 1.0
+            for xv, y1, y2 in zip(x_curve, y_curve_1, y_curve_2):
+                try:
+                    y1f = float(y1)
+                    y2f = float(y2)
+                except Exception:
+                    continue
+                if not (math.isfinite(y1f) and math.isfinite(y2f)):
+                    continue
 
-        x_rand = rng.uniform(a, b, size=n_muestras)
-        y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
-        sim_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+                x_float = float(xv)
+                curve_points_1.append([x_float, y1f])
+                curve_points_2.append([x_float, y2f])
+                x_fill.append(x_float)
+                y_lower.append(min(y1f, y2f))
+                y_upper.append(max(y1f, y2f))
 
-        traces.append(
-            {
-                "name": "Área contenida",
-                "plotly": {
-                    "type": "scatter",
-                    "mode": "lines",
+            if len(curve_points_1) < 2 or len(curve_points_2) < 2:
+                raise ValueError("No se pudo construir las curvas en el intervalo indicado.")
+
+            y_floor = min(y_lower)
+            y_ceiling = max(y_upper)
+            if abs(y_ceiling - y_floor) < 1e-12:
+                y_floor -= 1.0
+                y_ceiling += 1.0
+
+            x_rand = rng.uniform(a, b, size=n_muestras)
+            y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
+            obtained_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+
+            successful_points: list[list[float]] = []
+            for xv, yv in zip(x_rand, y_rand):
+                try:
+                    f_val = float(fn(float(xv)))
+                    g_val = float(fn2(float(xv)))
+                except Exception:
+                    continue
+                if not (math.isfinite(f_val) and math.isfinite(g_val)):
+                    continue
+                lower_y = min(f_val, g_val)
+                upper_y = max(f_val, g_val)
+                if lower_y <= float(yv) <= upper_y:
+                    successful_points.append([float(xv), float(yv)])
+
+            traces.append(
+                {
+                    "name": "Área entre curvas",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área entre curvas",
+                        "x": x_fill,
+                        "y": y_lower,
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "showlegend": False,
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Área entre curvas",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área entre curvas",
+                        "x": x_fill,
+                        "y": y_upper,
+                        "fill": "tonexty",
+                        "fillcolor": "rgba(47, 111, 237, 0.16)",
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points_1})
+            traces.append({"name": "Curva g(x)", "kind": "line", "dash": "dash", "points": curve_points_2})
+            traces.append(
+                {
+                    "name": "Puntos Obtenidos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Obtenidos",
+                        "x": [point[0] for point in obtained_points],
+                        "y": [point[1] for point in obtained_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(209, 73, 91, 0.52)",
+                            "line": {"color": "#ffffff", "width": 0.7},
+                        },
+                        "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Puntos Exitosos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Exitosos",
+                        "x": [point[0] for point in successful_points],
+                        "y": [point[1] for point in successful_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(46, 160, 67, 0.92)",
+                            "line": {"color": "#ffffff", "width": 0.9},
+                        },
+                        "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+        else:
+            y_curve = np.asarray(fn(x_curve), dtype=float)
+            curve_points = [[float(xv), float(yv)] for xv, yv in zip(x_curve, y_curve) if math.isfinite(float(yv))]
+            if len(curve_points) < 2:
+                raise ValueError("No se pudo construir la curva en el intervalo indicado.")
+
+            x_curve_vals = [float(point[0]) for point in curve_points]
+            y_curve_vals = [float(point[1]) for point in curve_points]
+
+            y_floor = min(0.0, min(y_curve_vals))
+            y_ceiling = max(0.0, max(y_curve_vals))
+            if abs(y_ceiling - y_floor) < 1e-12:
+                y_floor -= 1.0
+                y_ceiling += 1.0
+
+            x_rand = rng.uniform(a, b, size=n_muestras)
+            y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
+            obtained_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+
+            successful_points: list[list[float]] = []
+            for xv, yv in zip(x_rand, y_rand):
+                try:
+                    f_val = float(fn(float(xv)))
+                except Exception:
+                    continue
+                if not math.isfinite(f_val):
+                    continue
+                lower_y = min(0.0, f_val)
+                upper_y = max(0.0, f_val)
+                if lower_y <= float(yv) <= upper_y:
+                    successful_points.append([float(xv), float(yv)])
+
+            traces.append(
+                {
                     "name": "Área contenida",
-                    "x": x_curve_vals,
-                    "y": y_curve_vals,
-                    "fill": "tozeroy",
-                    "fillcolor": "rgba(47, 111, 237, 0.16)",
-                    "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
-                    "hoverinfo": "skip",
-                },
-            }
-        )
-        traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points})
-        traces.append({"name": "Puntos simulados", "kind": "markers", "points": sim_points})
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área contenida",
+                        "x": x_curve_vals,
+                        "y": y_curve_vals,
+                        "fill": "tozeroy",
+                        "fillcolor": "rgba(47, 111, 237, 0.16)",
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points})
+            traces.append(
+                {
+                    "name": "Puntos Obtenidos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Obtenidos",
+                        "x": [point[0] for point in obtained_points],
+                        "y": [point[1] for point in obtained_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(209, 73, 91, 0.52)",
+                            "line": {"color": "#ffffff", "width": 0.7},
+                        },
+                        "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Puntos Exitosos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Exitosos",
+                        "x": [point[0] for point in successful_points],
+                        "y": [point[1] for point in successful_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(46, 160, 67, 0.92)",
+                            "line": {"color": "#ffffff", "width": 0.9},
+                        },
+                        "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
     else:
         x_min = float(lower_bounds[0])
         x_max = float(upper_bounds[0])
@@ -708,7 +892,15 @@ def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[
             [x_min, y_max],
             [x_min, y_min],
         ]
-        sim_points = [[float(sample[0]), float(sample[1])] for sample in samples]
+        obtained_points = [[float(sample[0]), float(sample[1])] for sample in samples]
+        successful_points: list[list[float]] = []
+        for sample in samples:
+            try:
+                value = float(fn(float(sample[0]), float(sample[1])))
+            except Exception:
+                continue
+            if math.isfinite(value):
+                successful_points.append([float(sample[0]), float(sample[1])])
 
         traces.append(
             {
@@ -728,7 +920,45 @@ def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[
             }
         )
         traces.append({"name": "Área contenida", "kind": "line", "points": boundary})
-        traces.append({"name": "Puntos simulados", "kind": "markers", "points": sim_points})
+        traces.append(
+            {
+                "name": "Puntos Obtenidos",
+                "plotly": {
+                    "type": "scatter",
+                    "mode": "markers",
+                    "name": "Puntos Obtenidos",
+                    "x": [point[0] for point in obtained_points],
+                    "y": [point[1] for point in obtained_points],
+                    "marker": {
+                        "size": 7,
+                        "color": "rgba(209, 73, 91, 0.5)",
+                        "line": {"color": "#ffffff", "width": 0.7},
+                    },
+                    "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                },
+            }
+        )
+        traces.append(
+            {
+                "name": "Puntos Exitosos",
+                "plotly": {
+                    "type": "scatter",
+                    "mode": "markers",
+                    "name": "Puntos Exitosos",
+                    "x": [point[0] for point in successful_points],
+                    "y": [point[1] for point in successful_points],
+                    "marker": {
+                        "size": 7,
+                        "color": "rgba(46, 160, 67, 0.92)",
+                        "line": {"color": "#ffffff", "width": 0.9},
+                    },
+                    "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                },
+            }
+        )
+
+    if between_curves and expr2 is not None:
+        return traces, f"{sp.latex(expr)}\;\text{{ y }}\;{sp.latex(expr2)}"
 
     return traces, sp.latex(expr)
 

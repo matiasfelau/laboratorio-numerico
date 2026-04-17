@@ -47,9 +47,22 @@ def simpson_13(
     else:
         if n is None:
             raise ValueError("Para Simpson 1/3 compuesto debés ingresar la cantidad de subintervalos n.")
-        n_subintervalos = int(n)
+        n_original = int(n)
+        if n_original < 2:
+            n_subintervalos = 2
+        elif n_original % 2 != 0:
+            n_subintervalos = n_original + 1
+        else:
+            n_subintervalos = n_original
+
         validar_subintervalos(n_subintervalos, minimo=2, multiplo_de=2)
         n_texto = str(n_subintervalos)
+
+        if n_subintervalos != n_original:
+            print(
+                "INTEGRACION_WARNING: "
+                f"n={n_original} es incompatible con Simpson 1/3 compuesto; se compensó automáticamente a n={n_subintervalos}."
+            )
 
     x_nodos, y_nodos = construir_nodos_evaluados(f, a, b, n_subintervalos)
     resultado = _simpson_13_desde_nodos(x_nodos, y_nodos)
