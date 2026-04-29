@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 import sympy as sp
@@ -73,13 +74,18 @@ def create_app() -> Flask:
             if result.error:
                 print(f"[api/run][error] {result.error}")
 
-        return jsonify(
-            {
-                "success": result.success,
-                "output": result.output,
-                "error": result.error,
-            }
-        )
+        # Extraer error de truncamiento si está presente
+        truncation_error = _extract_truncation_error(result.output)
+
+        response = {
+            "success": result.success,
+            "output": result.output,
+            "error": result.error,
+        }
+        if truncation_error is not None:
+            response["truncation_error"] = truncation_error
+
+        return jsonify(response)
 
     @app.post("/api/plot")
     def plot_function():
@@ -100,6 +106,10 @@ def create_app() -> Flask:
                 traces, latex_text = _build_lagrange_plot_traces(params, x_min, x_max)
             elif method_key == "diferencia_finita":
                 traces, latex_text = _build_diferencia_finita_plot_traces(params, x_min, x_max)
+            elif method_key == "montecarlo":
+                traces, latex_text = _build_montecarlo_plot_traces(params)
+            elif method_key in {"euler", "runge_kutta_4"}:
+                traces, latex_text = _build_edo_plot_traces(method_key, params)
             else:
                 expr_key = _expression_key(method_key)
                 expr_text = str(params.get(expr_key, "")).strip()
@@ -211,7 +221,10 @@ def create_app() -> Flask:
 
 def main() -> None:
     app = create_app()
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    host = os.getenv("APP_HOST", "127.0.0.1")
+    port = int(os.getenv("APP_PORT", "5000"))
+    debug = os.getenv("APP_DEBUG", "1") not in {"0", "false", "False"}
+    app.run(host=host, port=port, debug=debug)
 
 
 def _expression_key(method_key: str) -> str:
@@ -246,6 +259,24 @@ def _domain_for_plot(method_key: str, params: dict) -> tuple[float, float]:
         if method_key == "diferencia_finita":
             center = _parse_numeric_scalar(str(params.get("x", "")), "punto x")
             return center - radius, center + radius
+
+        if method_key in {"euler", "runge_kutta_4"}:
+            a = _parse_numeric_scalar(str(params.get("a", "")), "inicio del intervalo a")
+            b = _parse_numeric_scalar(str(params.get("b", "")), "fin del intervalo b")
+            h = _parse_numeric_scalar(str(params.get("h", "")), "paso h")
+            if h <= 0 or b <= a:
+                return fallback
+            pad = max(0.1, abs(b - a) * 0.1)
+            lo = a - pad
+            hi = b + pad
+            if math.isfinite(lo) and math.isfinite(hi) and lo < hi:
+                return lo, hi
+
+        if method_key == "montecarlo":
+            lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+            upper_bounds = _parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+            if len(lower_bounds) == 1 and len(upper_bounds) == 1:
+                return float(lower_bounds[0]), float(upper_bounds[0])
     except Exception:
         return fallback
 
@@ -488,6 +519,149 @@ def _build_diferencia_finita_plot_traces(
     return traces, latex_text
 
 
+def _build_edo_plot_traces(method_key: str, params: dict[str, object]) -> tuple[list[dict[str, object]], str]:
+    expr_text = _normalize_math_text(str(params.get("f_expr", "")))
+    if not expr_text:
+        raise ValueError("Debes ingresar una función f(x,y) para graficar.")
+
+    a = _parse_numeric_scalar(str(params.get("a", "")), "inicio del intervalo a")
+    b = _parse_numeric_scalar(str(params.get("b", "")), "fin del intervalo b")
+    y0 = _parse_numeric_scalar(str(params.get("y0", "")), "valor inicial y0")
+    h = _parse_numeric_scalar(str(params.get("h", "")), "paso h")
+
+    if h <= 0:
+        raise ValueError("El paso h debe ser > 0.")
+    if b <= a:
+        raise ValueError("El intervalo debe cumplir a < b.")
+
+    fn, _ = _build_sympy_numeric_function_xy(expr_text)
+
+    particular_points = _edo_numerical_points(method_key, fn, a, y0, h, b)
+    if len(particular_points) < 2:
+        raise ValueError("No se pudo construir la solución particular para graficar.")
+
+    traces: list[dict[str, object]] = []
+    exact_points = _edo_exact_points(expr_text, a, y0, b)
+    if len(exact_points) >= 2:
+        traces.append(
+            {
+                "name": "Curva real",
+                "kind": "line",
+                "dash": "dash",
+                "points": exact_points,
+                "color": "#3f51b5",
+            }
+        )
+
+    traces.append(
+        {
+            "name": "Solución particular",
+            "kind": "line",
+            "points": particular_points,
+            "color": "#ef6c00",
+        }
+    )
+    traces.append(
+        {
+            "name": "Condición inicial",
+            "kind": "markers",
+            "points": [[float(a), float(y0)]],
+        }
+    )
+
+    latex_text = _expression_to_latex(expr_text)
+    return traces, latex_text
+
+
+def _build_sympy_numeric_function_xy(expr_text: str):
+    x = sp.Symbol("x")
+    y = sp.Symbol("y")
+    try:
+        expr = sp.sympify(_normalize_math_text(expr_text), locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x, "y": y})
+        if expr.free_symbols - {x, y}:
+            raise ValueError("La expresión debe depender solo de x e y.")
+        return sp.lambdify((x, y), expr, modules=["numpy"]), expr
+    except Exception as exc:
+        raise ValueError("La expresion de la funcion no es valida.") from exc
+
+
+def _edo_numerical_points(
+    method_key: str,
+    fn,
+    a: float,
+    y0: float,
+    h: float,
+    b: float,
+) -> list[list[float]]:
+    x = float(a)
+    y = float(y0)
+    points: list[list[float]] = [[x, y]]
+    tol = 1e-12
+
+    while x < b - tol:
+        h_eff = min(h, b - x)
+        if h_eff <= tol:
+            break
+
+        try:
+            if method_key == "euler":
+                k1 = _safe_real_float(fn(x, y))
+                if k1 is None:
+                    break
+                y = y + h_eff * k1
+            else:
+                k1 = _safe_real_float(fn(x, y))
+                k2 = _safe_real_float(fn(x + h_eff / 2.0, y + (h_eff * k1) / 2.0)) if k1 is not None else None
+                k3 = _safe_real_float(fn(x + h_eff / 2.0, y + (h_eff * k2) / 2.0)) if k2 is not None else None
+                k4 = _safe_real_float(fn(x + h_eff, y + h_eff * k3)) if k3 is not None else None
+                if None in {k1, k2, k3, k4}:
+                    break
+                y = y + (h_eff / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+            x_next = x + h_eff
+            if x_next > b - tol:
+                x_next = b
+            x = x_next
+            if not (math.isfinite(x) and math.isfinite(y) and abs(y) <= 1e6):
+                break
+            points.append([float(x), float(y)])
+        except Exception:
+            break
+
+    return points
+
+
+def _edo_exact_points(expr_text: str, a: float, y0: float, b: float) -> list[list[float]]:
+    x = sp.Symbol("x")
+    y = sp.Symbol("y")
+    y_func = sp.Function("y")
+    locals_map = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x, "y": y}
+
+    try:
+        sym_expr = sp.sympify(_normalize_math_text(expr_text), locals=locals_map)
+        if sym_expr.free_symbols - {x, y}:
+            return []
+
+        ode_rhs = sym_expr.subs(y, y_func(x))
+        ode = sp.Eq(sp.diff(y_func(x), x), ode_rhs)
+        solution = sp.dsolve(ode, ics={y_func(sp.Float(a)): sp.Float(y0)})
+        exact_expr = solution.rhs
+        exact_fn = sp.lambdify(x, exact_expr, modules=["numpy"])
+    except Exception:
+        return []
+
+    x_values = np.linspace(a, b, 401)
+    points: list[list[float]] = []
+    for xv in x_values:
+        yv = _safe_real_float(exact_fn(float(xv)))
+        if yv is None:
+            continue
+        if math.isfinite(yv) and abs(yv) <= 1e6:
+            points.append([float(xv), float(yv)])
+
+    return points
+
+
 def _build_lagrange_plot_traces(
     params: dict[str, object], x_min: float, x_max: float
 ) -> tuple[list[dict[str, object]], str]:
@@ -565,6 +739,390 @@ def _build_sympy_numeric_function(expr_text: str):
         return sp.lambdify(x, expr, modules=["numpy"]), expr
     except Exception as exc:
         raise ValueError("La expresion de la funcion no es valida.") from exc
+
+
+def _build_sympy_numeric_function_nd(expr_text: str, dimension: int):
+    if dimension < 1:
+        raise ValueError("La dimensión debe ser >= 1.")
+
+    symbols = [sp.Symbol(f"x{i}") for i in range(1, dimension + 1)]
+    locals_map = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E}
+    for symbol in symbols:
+        locals_map[str(symbol)] = symbol
+
+    aliases = ["x", "y", "z", "w", "t"]
+    for idx, alias in enumerate(aliases):
+        if idx < dimension:
+            locals_map[alias] = symbols[idx]
+
+    try:
+        expr = sp.sympify(_normalize_math_text(expr_text), locals=locals_map)
+    except Exception as exc:
+        raise ValueError("La expresion de la funcion no es valida.") from exc
+
+    if expr.free_symbols - set(symbols):
+        raise ValueError("La función tiene variables no soportadas para el dominio indicado.")
+
+    return sp.lambdify(symbols, expr, modules=["numpy"]), expr
+
+
+def _parse_numeric_csv_list(text: str, field_name: str) -> np.ndarray:
+    parts = [item.strip() for item in str(text).split(",") if item.strip()]
+    if len(parts) < 1:
+        raise ValueError(f"Debes ingresar al menos un valor en {field_name}.")
+
+    values = [_parse_numeric_scalar(part, field_name) for part in parts]
+    return np.asarray(values, dtype=float)
+
+
+def _build_montecarlo_plot_traces(params: dict[str, object]) -> tuple[list[dict[str, object]], str]:
+    mode = str(params.get("montecarlo_mode", "expr")).strip().lower()
+    between_curves = mode == "curves"
+
+    expr_text = _normalize_math_text(str(params.get("f_expr", "")))
+    if not expr_text:
+        raise ValueError("Debes ingresar una función para graficar Montecarlo.")
+
+    expr_text_2 = _normalize_math_text(str(params.get("f_expr_2", ""))) if between_curves else ""
+    if between_curves and not expr_text_2:
+        raise ValueError("Debes ingresar una segunda función para graficar área entre curvas.")
+
+    lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+    upper_bounds = _parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+    if len(lower_bounds) != len(upper_bounds):
+        raise ValueError("La cantidad de límites inferiores debe coincidir con la de límites superiores.")
+
+    dimension = len(lower_bounds)
+    if dimension not in {1, 2}:
+        raise ValueError("La visualización de Montecarlo está disponible para 1D y 2D.")
+    if between_curves and dimension != 1:
+        raise ValueError("El modo área entre curvas requiere un único intervalo [a,b].")
+
+    n_muestras = int(_parse_numeric_scalar(str(params.get("n_muestras", "200")), "cantidad de muestras N"))
+    n_muestras = max(10, min(n_muestras, 1500))
+    semilla_text = str(params.get("semilla", "")).strip()
+    semilla = int(semilla_text) if semilla_text else 7
+
+    fn, expr = _build_sympy_numeric_function_nd(expr_text, dimension)
+    fn2 = None
+    expr2 = None
+    if between_curves:
+        fn2, expr2 = _build_sympy_numeric_function_nd(expr_text_2, 1)
+    rng = np.random.default_rng(semilla)
+    samples = rng.uniform(lower_bounds, upper_bounds, size=(n_muestras, dimension))
+
+    traces: list[dict[str, object]] = []
+
+    if dimension == 1:
+        a = float(lower_bounds[0])
+        b = float(upper_bounds[0])
+
+        x_curve = np.linspace(a, b, 401)
+        if between_curves:
+            y_curve_1 = np.asarray(fn(x_curve), dtype=float)
+            y_curve_2 = np.asarray(fn2(x_curve), dtype=float)
+
+            curve_points_1: list[list[float]] = []
+            curve_points_2: list[list[float]] = []
+            x_fill: list[float] = []
+            y_lower: list[float] = []
+            y_upper: list[float] = []
+
+            for xv, y1, y2 in zip(x_curve, y_curve_1, y_curve_2):
+                try:
+                    y1f = float(y1)
+                    y2f = float(y2)
+                except Exception:
+                    continue
+                if not (math.isfinite(y1f) and math.isfinite(y2f)):
+                    continue
+
+                x_float = float(xv)
+                curve_points_1.append([x_float, y1f])
+                curve_points_2.append([x_float, y2f])
+                x_fill.append(x_float)
+                y_lower.append(min(y1f, y2f))
+                y_upper.append(max(y1f, y2f))
+
+            if len(curve_points_1) < 2 or len(curve_points_2) < 2:
+                raise ValueError("No se pudo construir las curvas en el intervalo indicado.")
+
+            y_floor = min(y_lower)
+            y_ceiling = max(y_upper)
+            if abs(y_ceiling - y_floor) < 1e-12:
+                y_floor -= 1.0
+                y_ceiling += 1.0
+
+            x_rand = rng.uniform(a, b, size=n_muestras)
+            y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
+            obtained_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+
+            successful_points: list[list[float]] = []
+            for xv, yv in zip(x_rand, y_rand):
+                try:
+                    f_val = float(fn(float(xv)))
+                    g_val = float(fn2(float(xv)))
+                except Exception:
+                    continue
+                if not (math.isfinite(f_val) and math.isfinite(g_val)):
+                    continue
+                lower_y = min(f_val, g_val)
+                upper_y = max(f_val, g_val)
+                if lower_y <= float(yv) <= upper_y:
+                    successful_points.append([float(xv), float(yv)])
+
+            traces.append(
+                {
+                    "name": "Área entre curvas",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área entre curvas",
+                        "x": x_fill,
+                        "y": y_lower,
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "showlegend": False,
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Área entre curvas",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área entre curvas",
+                        "x": x_fill,
+                        "y": y_upper,
+                        "fill": "tonexty",
+                        "fillcolor": "rgba(47, 111, 237, 0.16)",
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points_1})
+            traces.append({"name": "Curva g(x)", "kind": "line", "dash": "dash", "points": curve_points_2})
+            traces.append(
+                {
+                    "name": "Puntos Obtenidos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Obtenidos",
+                        "x": [point[0] for point in obtained_points],
+                        "y": [point[1] for point in obtained_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(209, 73, 91, 0.52)",
+                            "line": {"color": "#ffffff", "width": 0.7},
+                        },
+                        "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Puntos Exitosos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Exitosos",
+                        "x": [point[0] for point in successful_points],
+                        "y": [point[1] for point in successful_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(46, 160, 67, 0.92)",
+                            "line": {"color": "#ffffff", "width": 0.9},
+                        },
+                        "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+        else:
+            y_curve = np.asarray(fn(x_curve), dtype=float)
+            curve_points = [[float(xv), float(yv)] for xv, yv in zip(x_curve, y_curve) if math.isfinite(float(yv))]
+            if len(curve_points) < 2:
+                raise ValueError("No se pudo construir la curva en el intervalo indicado.")
+
+            x_curve_vals = [float(point[0]) for point in curve_points]
+            y_curve_vals = [float(point[1]) for point in curve_points]
+
+            y_floor = min(0.0, min(y_curve_vals))
+            y_ceiling = max(0.0, max(y_curve_vals))
+            if abs(y_ceiling - y_floor) < 1e-12:
+                y_floor -= 1.0
+                y_ceiling += 1.0
+
+            x_rand = rng.uniform(a, b, size=n_muestras)
+            y_rand = rng.uniform(y_floor, y_ceiling, size=n_muestras)
+            obtained_points = [[float(xv), float(yv)] for xv, yv in zip(x_rand, y_rand)]
+
+            successful_points: list[list[float]] = []
+            for xv, yv in zip(x_rand, y_rand):
+                try:
+                    f_val = float(fn(float(xv)))
+                except Exception:
+                    continue
+                if not math.isfinite(f_val):
+                    continue
+                lower_y = min(0.0, f_val)
+                upper_y = max(0.0, f_val)
+                if lower_y <= float(yv) <= upper_y:
+                    successful_points.append([float(xv), float(yv)])
+
+            traces.append(
+                {
+                    "name": "Área contenida",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": "Área contenida",
+                        "x": x_curve_vals,
+                        "y": y_curve_vals,
+                        "fill": "tozeroy",
+                        "fillcolor": "rgba(47, 111, 237, 0.16)",
+                        "line": {"width": 0.0, "color": "rgba(47, 111, 237, 0.0)"},
+                        "hoverinfo": "skip",
+                    },
+                }
+            )
+            traces.append({"name": "Curva f(x)", "kind": "line", "points": curve_points})
+            traces.append(
+                {
+                    "name": "Puntos Obtenidos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Obtenidos",
+                        "x": [point[0] for point in obtained_points],
+                        "y": [point[1] for point in obtained_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(209, 73, 91, 0.52)",
+                            "line": {"color": "#ffffff", "width": 0.7},
+                        },
+                        "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+            traces.append(
+                {
+                    "name": "Puntos Exitosos",
+                    "plotly": {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "name": "Puntos Exitosos",
+                        "x": [point[0] for point in successful_points],
+                        "y": [point[1] for point in successful_points],
+                        "marker": {
+                            "size": 7,
+                            "color": "rgba(46, 160, 67, 0.92)",
+                            "line": {"color": "#ffffff", "width": 0.9},
+                        },
+                        "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                    },
+                }
+            )
+    else:
+        x_min = float(lower_bounds[0])
+        x_max = float(upper_bounds[0])
+        y_min = float(lower_bounds[1])
+        y_max = float(upper_bounds[1])
+
+        gx = np.linspace(x_min, x_max, 70)
+        gy = np.linspace(y_min, y_max, 70)
+        z_grid: list[list[float | None]] = []
+        for yv in gy:
+            row: list[float | None] = []
+            for xv in gx:
+                try:
+                    zv = float(fn(float(xv), float(yv)))
+                    if math.isfinite(zv):
+                        row.append(zv)
+                    else:
+                        row.append(None)
+                except Exception:
+                    row.append(None)
+            z_grid.append(row)
+
+        boundary = [
+            [x_min, y_min],
+            [x_max, y_min],
+            [x_max, y_max],
+            [x_min, y_max],
+            [x_min, y_min],
+        ]
+        obtained_points = [[float(sample[0]), float(sample[1])] for sample in samples]
+        successful_points: list[list[float]] = []
+        for sample in samples:
+            try:
+                value = float(fn(float(sample[0]), float(sample[1])))
+            except Exception:
+                continue
+            if math.isfinite(value):
+                successful_points.append([float(sample[0]), float(sample[1])])
+
+        traces.append(
+            {
+                "name": "Curvas de nivel f(x,y)",
+                "plotly": {
+                    "type": "contour",
+                    "name": "Curvas de nivel f(x,y)",
+                    "x": [float(v) for v in gx.tolist()],
+                    "y": [float(v) for v in gy.tolist()],
+                    "z": z_grid,
+                    "showscale": False,
+                    "line": {"width": 1.2, "color": "#2f6fed"},
+                    "colorscale": "Blues",
+                    "contours": {"coloring": "none", "showlabels": False},
+                    "hovertemplate": "x=%{x:.4g}<br>y=%{y:.4g}<br>f=%{z:.4g}<extra></extra>",
+                },
+            }
+        )
+        traces.append({"name": "Área contenida", "kind": "line", "points": boundary})
+        traces.append(
+            {
+                "name": "Puntos Obtenidos",
+                "plotly": {
+                    "type": "scatter",
+                    "mode": "markers",
+                    "name": "Puntos Obtenidos",
+                    "x": [point[0] for point in obtained_points],
+                    "y": [point[1] for point in obtained_points],
+                    "marker": {
+                        "size": 7,
+                        "color": "rgba(209, 73, 91, 0.5)",
+                        "line": {"color": "#ffffff", "width": 0.7},
+                    },
+                    "hovertemplate": "Puntos Obtenidos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                },
+            }
+        )
+        traces.append(
+            {
+                "name": "Puntos Exitosos",
+                "plotly": {
+                    "type": "scatter",
+                    "mode": "markers",
+                    "name": "Puntos Exitosos",
+                    "x": [point[0] for point in successful_points],
+                    "y": [point[1] for point in successful_points],
+                    "marker": {
+                        "size": 7,
+                        "color": "rgba(46, 160, 67, 0.92)",
+                        "line": {"color": "#ffffff", "width": 0.9},
+                    },
+                    "hovertemplate": "Puntos Exitosos<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
+                },
+            }
+        )
+
+    if between_curves and expr2 is not None:
+        return traces, f"{sp.latex(expr)}\;\text{{ y }}\;{sp.latex(expr2)}"
+
+    return traces, sp.latex(expr)
 
 
 def _parse_numeric_scalar(text: str, field_name: str) -> float:
@@ -748,6 +1306,20 @@ def _parse_global_config(raw: object) -> dict[str, int | float]:
         result["debug_mode"] = bool(raw["debugMode"])
 
     return result
+
+
+def _extract_truncation_error(output: str) -> str | None:
+    """Extrae el valor de ERROR_TRUNCAMIENTO del output capturado."""
+    if not output:
+        return None
+    
+    for line in output.split('\n'):
+        if line.startswith('ERROR_TRUNCAMIENTO:'):
+            # Extrae el valor después del prefijo
+            value = line[len('ERROR_TRUNCAMIENTO:'):].strip()
+            return value
+    
+    return None
 
 
 if __name__ == "__main__":

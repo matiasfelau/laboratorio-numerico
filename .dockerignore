@@ -1,0 +1,28 @@
+# VCS
+.git
+.gitignore
+
+# Python cache and artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Local environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime local files
+.server.pid
+*.log
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

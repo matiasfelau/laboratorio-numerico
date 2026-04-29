@@ -144,7 +144,10 @@ def _limpiar_coeficientes_casi_cero(expr, variable, umbral):
 
 def _formatear_expresion_salida(expr, variable, precision, tiene_funcion_real):
 	if tiene_funcion_real:
-		return simplificar_expresion_racional(expr, precision)
+		# En modo funcion real se prioriza legibilidad numerica del polinomio final.
+		expr_numerica = sp.expand(sp.N(expr, 16))
+		expr_numerica = _limpiar_coeficientes_casi_cero(expr_numerica, variable, umbral=1e-12)
+		return redondear_expresion(expr_numerica, max(12, int(precision) + 4))
 
 	# En modo imagenes se prioriza una salida numerica legible.
 	expr_numerica = sp.expand(sp.N(expr, 16))
@@ -199,7 +202,8 @@ def lagrange(f_expr_texto, x_nodos, x_eval, y_nodos=None):
 	x = sp.Symbol("x")
 	x_nodos_sim = _simbolizar_lista(x_nodos, precision)
 	if tiene_funcion_real:
-		y_nodos_sim = [sp.simplify(f_expr.subs(x, xi)) for xi in x_nodos_sim]
+		# Se usa evaluacion numerica para evitar expresiones simbolicas enormes.
+		y_nodos_sim = _simbolizar_lista(y_nodos, precision)
 	else:
 		y_nodos_sim = _simbolizar_lista(y_nodos, precision)
 

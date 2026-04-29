@@ -14,7 +14,19 @@ from typing import Callable
 import numpy as np
 import sympy as sp
 
-from metodos import aceleracion_aitken, biseccion, diferencia_finita, lagrange, newton_raphson, punto_fijo
+from metodos import (
+    aceleracion_aitken,
+    biseccion,
+    diferencia_finita,
+    lagrange,
+    montecarlo,
+    newton_raphson,
+    punto_fijo,
+    runge_kutta,
+    simpson_13,
+    simpson_38,
+    trapecio,
+)
 
 
 MATH_LOCALS = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E}
@@ -67,6 +79,24 @@ class MethodRunner:
             return
         if method_key == "diferencia_finita":
             self._run_diferencia_finita(params)
+            return
+        if method_key == "euler":
+            self._run_euler(params)
+            return
+        if method_key == "runge_kutta_4":
+            self._run_runge_kutta_4(params)
+            return
+        if method_key == "trapecio":
+            self._run_trapecio(params)
+            return
+        if method_key == "simpson_13":
+            self._run_simpson_13(params)
+            return
+        if method_key == "simpson_38":
+            self._run_simpson_38(params)
+            return
+        if method_key == "montecarlo":
+            self._run_montecarlo(params)
             return
 
         raise ValueError(f"Metodo no soportado: {method_key}")
@@ -147,6 +177,125 @@ class MethodRunner:
         x_value = self._parse_numeric_scalar(x_text, "punto x") if x_text else 0.0
         diferencia_finita.diferencia_finita(x_value, h_value, metodo, y_xm1=y_xm1, y_x=y_x, y_xp1=y_xp1)
 
+    def _run_euler(self, params: dict[str, object]) -> None:
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_xy(f_expr_text)
+        a = self._parse_numeric_scalar(str(params["a"]), "inicio del intervalo a")
+        b = self._parse_numeric_scalar(str(params["b"]), "fin del intervalo b")
+        y0 = self._parse_numeric_scalar(str(params["y0"]), "valor inicial y0")
+        h = self._parse_numeric_scalar(str(params["h"]), "paso h")
+        solucion_exacta = self._build_exact_solution_function_xy(f_expr_text, a, y0)
+        runge_kutta.euler(fx, solucion_exacta, y0, h, a, b)
+
+    def _run_runge_kutta_4(self, params: dict[str, object]) -> None:
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_xy(f_expr_text)
+        a = self._parse_numeric_scalar(str(params["a"]), "inicio del intervalo a")
+        b = self._parse_numeric_scalar(str(params["b"]), "fin del intervalo b")
+        y0 = self._parse_numeric_scalar(str(params["y0"]), "valor inicial y0")
+        h = self._parse_numeric_scalar(str(params["h"]), "paso h")
+        solucion_exacta = self._build_exact_solution_function_xy(f_expr_text, a, y0)
+        runge_kutta.runge_kutta_4(fx, solucion_exacta, y0, h, a, b)
+
+    def _run_trapecio(self, params: dict[str, object]) -> None:
+        warnings: list[str] = []
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        trapecio.trapecio(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
+
+    def _run_simpson_13(self, params: dict[str, object]) -> None:
+        warnings: list[str] = []
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        simpson_13.simpson_13(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
+
+    def _run_simpson_38(self, params: dict[str, object]) -> None:
+        warnings: list[str] = []
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
+        a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
+        b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
+        variante, n_value = self._parse_integration_variant_and_n(params)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        simpson_38.simpson_38(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
+        for warning in warnings:
+            print(f"INTEGRACION_WARNING: {warning}")
+
+    def _run_montecarlo(self, params: dict[str, object]) -> None:
+        mode = str(params.get("montecarlo_mode", "expr")).strip().lower()
+        if mode not in {"expr", "curves"}:
+            mode = "expr"
+
+        lower_bounds = self._parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
+        upper_bounds = self._parse_numeric_csv_list(str(params.get("upper_bounds", "")), "límites superiores")
+
+        if len(lower_bounds) != len(upper_bounds):
+            raise ValueError("La cantidad de límites inferiores debe coincidir con la de límites superiores.")
+
+        fx = self._build_numeric_multivariable_function(str(params["f_expr"]), dimension_count=len(lower_bounds))
+        n_muestras = self._parse_positive_int(str(params.get("n_muestras", "")).strip(), "cantidad de muestras N")
+        ic_porcentaje = self._parse_percentage(str(params.get("ic_porcentaje", "95")).strip(), "% del intervalo de confianza")
+
+        semilla_raw = str(params.get("semilla", "")).strip()
+        semilla = self._parse_int(semilla_raw, "semilla") if semilla_raw else None
+
+        gx = None
+        if mode == "curves":
+            if len(lower_bounds) != 1:
+                raise ValueError("Para área entre curvas debes ingresar un solo intervalo [a,b].")
+
+            f_expr_2 = str(params.get("f_expr_2", "")).strip()
+            if not f_expr_2:
+                raise ValueError("Debes ingresar la segunda función g(x) para área entre curvas.")
+            gx = self._build_numeric_multivariable_function(f_expr_2, dimension_count=1)
+
+        montecarlo.montecarlo(
+            fx,
+            limites_inferiores=lower_bounds,
+            limites_superiores=upper_bounds,
+            n_muestras=n_muestras,
+            ic_porcentaje=ic_porcentaje,
+            semilla=semilla,
+            segunda_funcion=gx,
+            modo=("entre_curvas" if mode == "curves" else "dominio"),
+        )
+
     def _build_numeric_function(self, expression: str) -> Callable[[object], object]:
         x = sp.Symbol("x")
         try:
@@ -165,6 +314,184 @@ class MethodRunner:
                 return np.asarray(value, dtype=float)
             except Exception as exc:
                 raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+        return wrapped
+
+    def _build_numeric_function_xy(self, expression: str) -> Callable[[float, float], float]:
+        x = sp.Symbol("x")
+        y = sp.Symbol("y")
+        locals_map = {**MATH_LOCALS, "x": x, "y": y}
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+            if sym_expr.free_symbols - {x, y}:
+                raise ValueError("La expresion debe depender solo de las variables x e y.")
+            callable_fn = sp.lambdify((x, y), sym_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        def wrapped(x_value: float, y_value: float) -> float:
+            try:
+                numeric = complex(callable_fn(x_value, y_value))
+            except Exception as exc:
+                raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La expresion debe evaluarse a valores numericos reales.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La expresion debe evaluarse a valores numericos finitos.")
+            return real_value
+
+        return wrapped
+
+    def _build_exact_solution_function_xy(self, expression: str, a: float, y0: float) -> Callable[[float], float]:
+        x = sp.Symbol("x")
+        y = sp.Symbol("y")
+        y_func = sp.Function("y")
+        locals_map = {**MATH_LOCALS, "x": x, "y": y}
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+            if sym_expr.free_symbols - {x, y}:
+                raise ValueError("La expresion debe depender solo de las variables x e y.")
+
+            ode_rhs = sym_expr.subs(y, y_func(x))
+            ode = sp.Eq(sp.diff(y_func(x), x), ode_rhs)
+            solution = sp.dsolve(ode, ics={y_func(sp.Float(a)): sp.Float(y0)})
+            exact_expr = solution.rhs
+            exact_fn = sp.lambdify(x, exact_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError(
+                "No se pudo obtener la solución exacta de la EDO para construir la tabla solicitada."
+            ) from exc
+
+        def wrapped(x_value: float) -> float:
+            try:
+                numeric = complex(exact_fn(x_value))
+            except Exception as exc:
+                raise ValueError("No se pudo evaluar la solución exacta en la tabla.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La solución exacta tomó valores complejos no soportados.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La solución exacta tomó valores no finitos.")
+            return real_value
+
+        return wrapped
+
+    def _build_numeric_function_newton_cotes(self, expression: str, warnings: list[str]) -> Callable[[object], float]:
+        x = sp.Symbol("x")
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=MATH_LOCALS)
+            if sym_expr.free_symbols - {x}:
+                raise ValueError("La expresion debe depender solo de la variable x.")
+            callable_fn = sp.lambdify(x, sym_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        warned_points: set[float] = set()
+
+        def _to_real_finite(value: object) -> float | None:
+            try:
+                numeric = complex(value)
+            except Exception:
+                return None
+
+            if abs(numeric.imag) > 1e-12:
+                return None
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                return None
+            return real_value
+
+        def wrapped(x_value: object) -> float:
+            try:
+                direct = _to_real_finite(callable_fn(x_value))
+            except Exception:
+                direct = None
+
+            if direct is not None:
+                return direct
+
+            try:
+                x_scalar = float(x_value)
+            except Exception as exc:
+                raise ValueError("La función no pudo evaluarse numéricamente en Newton-Cotes.") from exc
+
+            try:
+                limited = sp.limit(sym_expr, x, sp.Float(x_scalar), dir="+-")
+                limit_value = _to_real_finite(limited.evalf())
+            except Exception:
+                limit_value = None
+
+            if limit_value is None:
+                raise ValueError(f"La función presenta una indeterminación no removible en x={x_scalar}.")
+
+            rounded_x = round(x_scalar, 12)
+            if rounded_x not in warned_points:
+                warned_points.add(rounded_x)
+                warnings.append(
+                    f"Se detectó una indeterminación en x={x_scalar:g}; se reemplazó por el valor del límite para continuar."
+                )
+
+            return limit_value
+
+        return wrapped
+
+    def _build_numeric_multivariable_function(self, expression: str, dimension_count: int) -> Callable[[object], float]:
+        if dimension_count < 1:
+            raise ValueError("Debes ingresar al menos una dimensión de integración.")
+
+        symbols = [sp.Symbol(f"x{i}") for i in range(1, dimension_count + 1)]
+        locals_map = {**MATH_LOCALS, **{str(symbol): symbol for symbol in symbols}}
+
+        # Alias convencionales para facilitar carga manual en Montecarlo.
+        axis_aliases = ["x", "y", "z", "w", "t"]
+        for idx, alias in enumerate(axis_aliases):
+            if idx < dimension_count:
+                locals_map[alias] = symbols[idx]
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        allowed_symbols = set(symbols)
+        if sym_expr.free_symbols - allowed_symbols:
+            names = ", ".join([str(symbol) for symbol in symbols])
+            aliases = ", ".join(axis_aliases[:dimension_count])
+            raise ValueError(f"La función debe depender solo de: {names} (o aliases: {aliases}).")
+
+        callable_fn = sp.lambdify(symbols, sym_expr, modules=["numpy"])
+
+        def wrapped(point: object) -> float:
+            try:
+                values = np.asarray(point, dtype=float).reshape(-1)
+            except Exception as exc:
+                raise ValueError("Punto de evaluación inválido para Montecarlo.") from exc
+
+            if values.size != dimension_count:
+                raise ValueError("La dimensión de la muestra no coincide con la función de Montecarlo.")
+
+            try:
+                value = callable_fn(*values.tolist())
+                numeric = complex(value)
+            except Exception as exc:
+                raise ValueError("La función de Montecarlo no pudo evaluarse en una muestra.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La función de Montecarlo produjo un valor complejo.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La función de Montecarlo produjo un valor no finito.")
+
+            return real_value
 
         return wrapped
 
@@ -192,6 +519,56 @@ class MethodRunner:
     def _normalize_math_text(self, text: str) -> str:
         return str(text).replace("π", "pi").replace("ℯ", "euler").strip()
 
+    def _parse_integration_variant_and_n(self, params: dict[str, object]) -> tuple[str, int | None]:
+        variante = str(params.get("variante", "Simple")).strip() or "Simple"
+        variante_key = variante.lower().replace("á", "a")
+
+        if variante_key in {"simple", "s"}:
+            return variante, None
+
+        if variante_key in {"compuesto", "compuesta", "c"}:
+            n_raw = str(params.get("n", "")).strip()
+            if not n_raw:
+                raise ValueError("Debes ingresar la cantidad de subintervalos n para la variante compuesta.")
+            return variante, self._parse_positive_int(n_raw, "subintervalos n")
+
+        raise ValueError("La variante debe ser 'Simple' o 'Compuesto'.")
+
+    def _parse_optional_error_eval_point(self, params: dict[str, object], a: float, b: float) -> float | None:
+        raw = str(params.get("x_error", "")).strip()
+        if not raw:
+            return None
+
+        x_eval = self._parse_numeric_scalar(raw, "x de evaluación del error de truncamiento")
+        x_min = min(a, b)
+        x_max = max(a, b)
+        if x_eval < x_min or x_eval > x_max:
+            raise ValueError("El valor x para evaluar el error de truncamiento debe pertenecer al intervalo [a, b].")
+        return x_eval
+
+    def _parse_positive_int(self, text: str, field_name: str) -> int:
+        try:
+            value = int(text)
+        except Exception as exc:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser un entero positivo.") from exc
+
+        if value <= 0:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser > 0.")
+
+        return value
+
+    def _parse_int(self, text: str, field_name: str) -> int:
+        try:
+            return int(text)
+        except Exception as exc:
+            raise ValueError(f"Valor inválido para {field_name}. Debe ser un entero.") from exc
+
+    def _parse_percentage(self, text: str, field_name: str) -> float:
+        value = self._parse_numeric_scalar(text, field_name)
+        if value <= 0 or value >= 100:
+            raise ValueError(f"Valor inválido para {field_name}. Debe estar entre 0 y 100 (excluidos).")
+        return float(value)
+
     def _parse_numeric_list(self, text: str, field_name: str, enforce_unique: bool = False) -> np.ndarray:
         parts = [item.strip() for item in text.split(",") if item.strip()]
         if len(parts) < 2:
@@ -209,6 +586,21 @@ class MethodRunner:
             raise ValueError("Los nodos no deben repetirse.")
 
         return nodes
+
+    def _parse_numeric_csv_list(self, text: str, field_name: str) -> np.ndarray:
+        parts = [item.strip() for item in text.split(",") if item.strip()]
+        if not parts:
+            raise ValueError(f"Debes ingresar al menos un valor en {field_name}, separado por coma.")
+
+        try:
+            values = np.asarray([self._parse_numeric_scalar(value, field_name) for value in parts], dtype=float)
+        except Exception as exc:
+            raise ValueError(
+                f"Los valores de {field_name} deben ser numéricos y separados por coma. "
+                "Admite decimales, fracciones (1/3), pi y e/euler."
+            ) from exc
+
+        return values
 
     @contextmanager
     def _temporary_callable(self, module: object, name: str, fn: Callable[[object], object]):
