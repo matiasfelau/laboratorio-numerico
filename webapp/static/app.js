@@ -48,7 +48,7 @@ let fixedPointSuggestedG = "";
 let fixedPointHelpPreviewTimer = null;
 
 const STORAGE_KEY = "metodos_numericos_ui_state_v1";
-const EXPRESSION_OPS = [
+const BASE_EXPRESSION_OPS = [
   { label: "+", insert: "+" },
   { label: "-", insert: "-" },
   { label: "*", insert: "*" },
@@ -63,6 +63,32 @@ const EXPRESSION_OPS = [
   { label: "log", insert: "log()", cursorOffset: -1 },
   { label: "π", insert: "π" },
 ];
+
+const FUNCTION_VARIABLE_OPS = [
+  { label: "x", insert: "x" },
+  { label: "y", insert: "y" },
+];
+
+const FUNCTION_FIELD_KEYS = new Set(["f_expr", "g_expr", "f_expr_2"]);
+
+function buildSlashToolbar(input) {
+  if (!input || input.tagName !== "INPUT") {
+    return null;
+  }
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "expr-ops";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "expr-op-btn";
+  button.textContent = "/";
+  button.title = "Insertar división";
+  button.addEventListener("click", () => insertIntoInput(input, "/"));
+
+  toolbar.appendChild(button);
+  return toolbar;
+}
 
 const THEORY_BY_METHOD = {
   newton_raphson: {
@@ -1313,7 +1339,7 @@ function ensureFixedPointHelpModalToolbar() {
     return;
   }
 
-  const toolbar = buildExpressionToolbar(fixedPointHelpInput);
+  const toolbar = buildExpressionToolbar(fixedPointHelpInput, { includeVariables: true });
   toolbar.classList.add("fixed-help-expr-ops");
   container.insertBefore(toolbar, fixedPointHelpInput);
 }
@@ -1853,6 +1879,18 @@ function createInput(field) {
   if (irrationalButtons) {
     wrapper.appendChild(irrationalButtons);
   }
+
+  if (
+    !irrationalButtons &&
+    input.tagName === "INPUT" &&
+    input.type === "text" &&
+    !FUNCTION_FIELD_KEYS.has(field.key)
+  ) {
+    const slashToolbar = buildSlashToolbar(input);
+    if (slashToolbar) {
+      wrapper.appendChild(slashToolbar);
+    }
+  }
   wrapper.appendChild(input);
   return wrapper;
 }
@@ -1881,6 +1919,7 @@ function buildIrrationalButtons(field, input) {
   toolbar.className = "irrational-ops";
 
   const constants = [
+    { label: "/", token: "/", title: "Insertar división" },
     { label: "π", token: "π", title: "Insertar pi" },
     { label: "e", token: "euler", title: "Insertar euler" },
   ];
@@ -1910,11 +1949,12 @@ function insertIntoInput(input, text, cursorOffset = 0) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-function buildExpressionToolbar(expressionInput) {
+function buildExpressionToolbar(expressionInput, { includeVariables = false } = {}) {
   const toolbar = document.createElement("div");
   toolbar.className = "expr-ops";
 
-  for (const op of EXPRESSION_OPS) {
+  const ops = includeVariables ? [...BASE_EXPRESSION_OPS, ...FUNCTION_VARIABLE_OPS] : BASE_EXPRESSION_OPS;
+  for (const op of ops) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "expr-op-btn";
@@ -1943,7 +1983,7 @@ function ensureExpressionToolbarForField(fieldKey) {
     return;
   }
 
-  wrapper.insertBefore(buildExpressionToolbar(input), input);
+  wrapper.insertBefore(buildExpressionToolbar(input, { includeVariables: true }), input);
 }
 
 function placeLatexPreviewUnderField(fieldKey) {
