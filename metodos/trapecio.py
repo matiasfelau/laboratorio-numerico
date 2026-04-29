@@ -8,6 +8,7 @@ from __future__ import annotations
 from utils.parametros import resolver_config
 
 from .integracion_utils import (
+    calcular_error_truncamiento_trapecio,
     construir_nodos_evaluados,
     normalizar_variante,
     renderizar_tabla_nodos,
@@ -23,7 +24,15 @@ def _trapecio_desde_nodos(x_nodos: list[float], y_nodos: list[float]) -> float:
     return (h / 2.0) * (y_nodos[0] + y_nodos[-1] + 2.0 * suma_intermedia)
 
 
-def trapecio(f, a: float, b: float, variante: str = "Simple", n: int | None = None) -> None:
+def trapecio(
+    f,
+    a: float,
+    b: float,
+    variante: str = "Simple",
+    n: int | None = None,
+    f_expr_text: str | None = None,
+    x_eval_derivada: float | None = None,
+) -> None:
     """Ejecuta regla del trapecio y emite salida de texto para la UI."""
     config = resolver_config()
     precision = config.precision
@@ -51,3 +60,10 @@ def trapecio(f, a: float, b: float, variante: str = "Simple", n: int | None = No
     print(f"INTEGRACION_VARIANTE: {variante_label}")
     print(f"INTEGRACION_SUBINTERVALOS: {n_texto}")
     print(f"INTEGRACION_RESULTADO: {resultado_redondeado:.{precision}f}")
+
+    if f_expr_text:
+        error_truncamiento = calcular_error_truncamiento_trapecio(
+            f_expr_text, a, b, n_subintervalos, precision, x_eval_derivada=x_eval_derivada
+        )
+        if error_truncamiento is not None:
+            print(f"ERROR_TRUNCAMIENTO: {error_truncamiento:.{precision}f}")

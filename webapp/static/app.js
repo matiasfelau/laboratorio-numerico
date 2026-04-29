@@ -114,8 +114,14 @@ const THEORY_BY_METHOD = {
         items: [{ latex: "x_{n+1}=g(x_n)" }],
       },
       {
-        title: "Condición de convergencia local",
-        items: [{ latex: "|g'(x^*)|<1" }],
+        title: "Punto fijo y visualización",
+        items: [{ latex: "g(x)=x" }],
+      },
+      {
+        title: "Condición de Lipschitz (convergencia)",
+        items: [
+          { latex: "|g'(x)|<1" },
+        ],
       },
       {
         title: "Criterio de error",
@@ -126,12 +132,35 @@ const THEORY_BY_METHOD = {
       },
     ],
   },
+  euler: {
+    subtitle: "Método de Euler",
+    blocks: [
+      {
+        title: "Problema de valor inicial",
+        items: [{ latex: "y'=f(x,y),\\quad y(x_0)=y_0" }],
+      },
+      {
+        title: "Esquema de Euler explícito",
+        items: [{ latex: "y_{n+1}=y_n+h\\,f(x_n,y_n)" }],
+      },
+    ],
+  },
   aceleracion_aitken: {
     subtitle: "Aceleración de Aitken",
     blocks: [
       {
         title: "Secuencia base",
         items: [{ latex: "x_{n+1}=g(x_n),\\quad x_{n+2}=g(x_{n+1})" }],
+      },
+      {
+        title: "Punto fijo y visualización",
+        items: [{ latex: "g(x)=x" }],
+      },
+      {
+        title: "Condición de Lipschitz (sobre g)",
+        items: [
+          { latex: "|g'(x)|<1" },
+        ],
       },
       {
         title: "Aceleración Δ²",
@@ -157,6 +186,23 @@ const THEORY_BY_METHOD = {
         title: "Base de Lagrange",
         items: [{ latex: "L_i(x)=\\prod_{j=0,\\,j\\ne i}^{n}\\frac{x-x_j}{x_i-x_j}" }],
       },
+      {
+        title: "Error local",
+        items: [
+          {
+            latex: "E_{local}(x)=f(x)-P_n(x)",
+          },
+        ],
+      },
+      {
+        title: "Error global (cota)",
+        items: [
+          {
+            latex:
+              "|E(x)|\\le\\frac{M_{n+1}}{(n+1)!}\\left|\\prod_{i=0}^{n}(x-x_i)\\right|,\\quad M_{n+1}=\\max_{\\xi\\in[a,b]}|f^{(n+1)}(\\xi)|",
+          },
+        ],
+      },
     ],
   },
   diferencia_finita: {
@@ -168,6 +214,25 @@ const THEORY_BY_METHOD = {
           { latex: "f'(x)\\approx\\frac{f(x+h)-f(x)}{h}", note: "Progresiva" },
           { latex: "f'(x)\\approx\\frac{f(x)-f(x-h)}{h}", note: "Regresiva" },
           { latex: "f'(x)\\approx\\frac{f(x+h)-f(x-h)}{2h}", note: "Central" },
+        ],
+      },
+    ],
+  },
+  runge_kutta_4: {
+    subtitle: "Runge-Kutta de orden 4",
+    blocks: [
+      {
+        title: "Problema de valor inicial",
+        items: [{ latex: "y'=f(x,y),\\quad y(x_0)=y_0" }],
+      },
+      {
+        title: "Esquema RK4 clásico",
+        items: [
+          { latex: "k_1=f(x_n,y_n)" },
+          { latex: "k_2=f\\left(x_n+\\frac{h}{2},\\,y_n+\\frac{h}{2}k_1\\right)" },
+          { latex: "k_3=f\\left(x_n+\\frac{h}{2},\\,y_n+\\frac{h}{2}k_2\\right)" },
+          { latex: "k_4=f\\left(x_n+h,\\,y_n+hk_3\\right)" },
+          { latex: "y_{n+1}=y_n+\\frac{h}{6}(k_1+2k_2+2k_3+k_4)" },
         ],
       },
     ],
@@ -185,6 +250,19 @@ const THEORY_BY_METHOD = {
           {
             latex:
               "\\int_a^b f(x)\\,dx\\approx\\frac{h}{2}\\left[f(x_0)+2\\sum_{i=1}^{n-1}f(x_i)+f(x_n)\\right],\\quad h=\\frac{b-a}{n}",
+          },
+        ],
+      },
+      {
+        title: "Error de truncamiento (simple y compuesto)",
+        items: [
+          {
+            latex: "E_s = -\\frac{(b-a)^3}{12}\\,M",
+            note: "Trapecio simple",
+          },
+          {
+            latex: "E = -\\frac{(b-a)^3}{12\\,n^2}\\,M,\\quad M = \\max_{\\xi\\in[a,b]}|f''(\\xi)|",
+            note: "Trapecio compuesto (con n subintervalos)",
           },
         ],
       },
@@ -212,6 +290,19 @@ const THEORY_BY_METHOD = {
           },
         ],
       },
+      {
+        title: "Error de truncamiento (simple y compuesto)",
+        items: [
+          {
+            latex: "E_s = -\\frac{h^5}{90}\\,M",
+            note: "Simpson 1/3 simple (h=(b-a)/2)",
+          },
+          {
+            latex: "E = -\\frac{(b-a)^5}{180\\,n^4}\\,M,\\quad M = \\max_{\\xi\\in[a,b]}|f^{(4)}(\\xi)|",
+            note: "Simpson 1/3 compuesto (con n subintervalos)",
+          },
+        ],
+      },
     ],
   },
   simpson_38: {
@@ -233,6 +324,19 @@ const THEORY_BY_METHOD = {
             latex:
               "\\int_a^b f(x)\\,dx\\approx\\frac{3h}{8}\\left[f(x_0)+f(x_n)+3\\sum_{i\\not\\equiv0\\,(3)}f(x_i)+2\\sum_{i\\equiv0\\,(3)}f(x_i)\\right]",
             note: "Requiere n múltiplo de 3",
+          },
+        ],
+      },
+      {
+        title: "Error de truncamiento (simple y compuesto)",
+        items: [
+          {
+            latex: "E_s = -\\frac{3}{80}\\,h^5\\,M",
+            note: "Simpson 3/8 simple (h=(b-a)/3)",
+          },
+          {
+            latex: "E = -\\frac{(b-a)^5}{6480}\\,M,\\quad M = \\max_{\\xi\\in[a,b]}|f^{(4)}(\\xi)|",
+            note: "Simpson 3/8 compuesto (con n subintervalos)",
           },
         ],
       },
@@ -325,7 +429,7 @@ function supportsPlot(method) {
   if (!method) {
     return false;
   }
-  return ["newton_raphson", "biseccion", "punto_fijo", "aceleracion_aitken", "lagrange", "diferencia_finita", "montecarlo"].includes(method.key);
+  return ["newton_raphson", "biseccion", "punto_fijo", "aceleracion_aitken", "lagrange", "diferencia_finita", "montecarlo", "euler", "runge_kutta_4"].includes(method.key);
 }
 
 function shouldRenderPlot(method, params = null) {
@@ -367,6 +471,17 @@ function clearIntegrationResult() {
   }
   integrationResultSection.classList.add("output-empty");
   integrationResultSection.innerHTML = "Todavía no hay resultado.";
+
+  // Limpiar error de truncamiento también
+  const truncationErrorSection = document.getElementById("truncationErrorSection");
+  const truncationErrorValue = document.getElementById("truncationErrorValue");
+  if (truncationErrorSection) {
+    truncationErrorSection.hidden = true;
+    truncationErrorSection.classList.add("output-empty");
+  }
+  if (truncationErrorValue) {
+    truncationErrorValue.textContent = "-";
+  }
 }
 
 function clearMontecarloResults() {
@@ -1403,6 +1518,16 @@ function parseIntegrationWarnings(text) {
   return warnings;
 }
 
+function parseTruncationError(text) {
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("ERROR_TRUNCAMIENTO:")) {
+      return line.replace("ERROR_TRUNCAMIENTO:", "").trim();
+    }
+  }
+  return null;
+}
+
 function parseTaggedValue(text, tag) {
   for (const rawLine of String(text || "").split("\n")) {
     const line = rawLine.trim();
@@ -1453,9 +1578,10 @@ function buildMontecarloStatsHtml(summary) {
   `;
 }
 
-function renderIntegrationOutput(rawText, methodKey = null) {
+function renderIntegrationOutput(rawText, methodKey = null, truncationError = null) {
   const summary = parseIntegrationSummary(rawText);
   const warnings = parseIntegrationWarnings(rawText);
+  const effectiveTruncationError = truncationError ?? parseTruncationError(rawText);
   if (!summary) {
     clearIntegrationResult();
     if (methodKey === "montecarlo") {
@@ -1499,6 +1625,21 @@ function renderIntegrationOutput(rawText, methodKey = null) {
       if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
         window.MathJax.typesetPromise([integrationResultSection]).catch(() => {});
       }
+    }
+
+    // Mostrar error de truncamiento si está disponible
+    const truncationErrorSection = document.getElementById("truncationErrorSection");
+    const truncationErrorValue = document.getElementById("truncationErrorValue");
+    if (effectiveTruncationError && truncationErrorSection && truncationErrorValue) {
+      truncationErrorSection.hidden = false;
+      truncationErrorSection.classList.remove("output-empty");
+      truncationErrorValue.textContent = effectiveTruncationError;
+      if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+        window.MathJax.typesetPromise([truncationErrorSection]).catch(() => {});
+      }
+    } else if (truncationErrorSection) {
+      truncationErrorSection.hidden = true;
+      truncationErrorSection.classList.add("output-empty");
     }
   }
 
@@ -1636,7 +1777,7 @@ function renderDiferenciaFinitaSummary(summary) {
   `;
 }
 
-function renderOutput(rawText, methodKey = null) {
+function renderOutput(rawText, methodKey = null, truncationError = null) {
   const text = rawText || "Sin salida";
 
   if (!["trapecio", "simpson_13", "simpson_38", "montecarlo"].includes(methodKey || "")) {
@@ -1645,7 +1786,7 @@ function renderOutput(rawText, methodKey = null) {
   }
 
   if (["trapecio", "simpson_13", "simpson_38", "montecarlo"].includes(methodKey || "")) {
-    if (renderIntegrationOutput(text, methodKey)) {
+    if (renderIntegrationOutput(text, methodKey, truncationError)) {
       return;
     }
   }
@@ -2829,17 +2970,20 @@ function toPlotlyTrace(traceDef, index) {
   const kind = traceDef?.kind === "markers" ? "markers" : "line";
   const name = String(traceDef?.name || `Serie ${index + 1}`);
   const dash = typeof traceDef?.dash === "string" ? traceDef.dash : "solid";
+  const traceColor = typeof traceDef?.color === "string" ? traceDef.color : null;
+  const showlegend = traceDef?.showlegend === false ? false : true;
 
   if (kind === "markers") {
     return {
       type: "scatter",
       mode: "markers",
       name,
+      showlegend,
       x: points.map((p) => p[0]),
       y: points.map((p) => p[1]),
       marker: {
         size: 9,
-        color: "#d1495b",
+        color: traceColor || "#d1495b",
         line: { color: "#ffffff", width: 1.2 },
       },
       hovertemplate: `${name}<br>x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>`,
@@ -2852,10 +2996,11 @@ function toPlotlyTrace(traceDef, index) {
     type: "scatter",
     mode: "lines",
     name,
+    showlegend,
     x: series.x,
     y: series.y,
     line: {
-      color: palette[index % palette.length],
+      color: traceColor || palette[index % palette.length],
       width: 2.4,
       dash,
     },
@@ -3091,7 +3236,7 @@ async function runMethod() {
     }
 
     setStatus("ok", "Correcto");
-    renderOutput(data.output || "Sin salida", method.key);
+    renderOutput(data.output || "Sin salida", method.key, data.truncation_error);
     if (shouldRenderPlot(method, params)) {
       await requestPlot(method, params);
     } else {
@@ -3213,3 +3358,5 @@ bootstrap().catch((error) => {
   clearPlot();
   setPlotMessage(`No se pudo inicializar el gráfico: ${String(error)}`);
 });
+
+

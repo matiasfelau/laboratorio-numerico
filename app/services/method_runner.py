@@ -22,6 +22,7 @@ from metodos import (
     montecarlo,
     newton_raphson,
     punto_fijo,
+    runge_kutta,
     simpson_13,
     simpson_38,
     trapecio,
@@ -78,6 +79,12 @@ class MethodRunner:
             return
         if method_key == "diferencia_finita":
             self._run_diferencia_finita(params)
+            return
+        if method_key == "euler":
+            self._run_euler(params)
+            return
+        if method_key == "runge_kutta_4":
+            self._run_runge_kutta_4(params)
             return
         if method_key == "trapecio":
             self._run_trapecio(params)
@@ -170,33 +177,83 @@ class MethodRunner:
         x_value = self._parse_numeric_scalar(x_text, "punto x") if x_text else 0.0
         diferencia_finita.diferencia_finita(x_value, h_value, metodo, y_xm1=y_xm1, y_x=y_x, y_xp1=y_xp1)
 
+    def _run_euler(self, params: dict[str, object]) -> None:
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_xy(f_expr_text)
+        a = self._parse_numeric_scalar(str(params["a"]), "inicio del intervalo a")
+        b = self._parse_numeric_scalar(str(params["b"]), "fin del intervalo b")
+        y0 = self._parse_numeric_scalar(str(params["y0"]), "valor inicial y0")
+        h = self._parse_numeric_scalar(str(params["h"]), "paso h")
+        solucion_exacta = self._build_exact_solution_function_xy(f_expr_text, a, y0)
+        runge_kutta.euler(fx, solucion_exacta, y0, h, a, b)
+
+    def _run_runge_kutta_4(self, params: dict[str, object]) -> None:
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_xy(f_expr_text)
+        a = self._parse_numeric_scalar(str(params["a"]), "inicio del intervalo a")
+        b = self._parse_numeric_scalar(str(params["b"]), "fin del intervalo b")
+        y0 = self._parse_numeric_scalar(str(params["y0"]), "valor inicial y0")
+        h = self._parse_numeric_scalar(str(params["h"]), "paso h")
+        solucion_exacta = self._build_exact_solution_function_xy(f_expr_text, a, y0)
+        runge_kutta.runge_kutta_4(fx, solucion_exacta, y0, h, a, b)
+
     def _run_trapecio(self, params: dict[str, object]) -> None:
         warnings: list[str] = []
-        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
-        trapecio.trapecio(fx, a, b, variante=variante, n=n_value)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        trapecio.trapecio(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
         for warning in warnings:
             print(f"INTEGRACION_WARNING: {warning}")
 
     def _run_simpson_13(self, params: dict[str, object]) -> None:
         warnings: list[str] = []
-        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
-        simpson_13.simpson_13(fx, a, b, variante=variante, n=n_value)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        simpson_13.simpson_13(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
         for warning in warnings:
             print(f"INTEGRACION_WARNING: {warning}")
 
     def _run_simpson_38(self, params: dict[str, object]) -> None:
         warnings: list[str] = []
-        fx = self._build_numeric_function_newton_cotes(str(params["f_expr"]), warnings)
+        f_expr_text = str(params["f_expr"])
+        fx = self._build_numeric_function_newton_cotes(f_expr_text, warnings)
         a = self._parse_numeric_scalar(str(params["a"]), "límite inferior a")
         b = self._parse_numeric_scalar(str(params["b"]), "límite superior b")
         variante, n_value = self._parse_integration_variant_and_n(params)
-        simpson_38.simpson_38(fx, a, b, variante=variante, n=n_value)
+        x_eval_derivada = self._parse_optional_error_eval_point(params, a, b)
+        simpson_38.simpson_38(
+            fx,
+            a,
+            b,
+            variante=variante,
+            n=n_value,
+            f_expr_text=f_expr_text,
+            x_eval_derivada=x_eval_derivada,
+        )
         for warning in warnings:
             print(f"INTEGRACION_WARNING: {warning}")
 
@@ -257,6 +314,72 @@ class MethodRunner:
                 return np.asarray(value, dtype=float)
             except Exception as exc:
                 raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+        return wrapped
+
+    def _build_numeric_function_xy(self, expression: str) -> Callable[[float, float], float]:
+        x = sp.Symbol("x")
+        y = sp.Symbol("y")
+        locals_map = {**MATH_LOCALS, "x": x, "y": y}
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+            if sym_expr.free_symbols - {x, y}:
+                raise ValueError("La expresion debe depender solo de las variables x e y.")
+            callable_fn = sp.lambdify((x, y), sym_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError("La expresion de funcion no es valida.") from exc
+
+        def wrapped(x_value: float, y_value: float) -> float:
+            try:
+                numeric = complex(callable_fn(x_value, y_value))
+            except Exception as exc:
+                raise ValueError("La expresion debe evaluarse a valores numericos reales.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La expresion debe evaluarse a valores numericos reales.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La expresion debe evaluarse a valores numericos finitos.")
+            return real_value
+
+        return wrapped
+
+    def _build_exact_solution_function_xy(self, expression: str, a: float, y0: float) -> Callable[[float], float]:
+        x = sp.Symbol("x")
+        y = sp.Symbol("y")
+        y_func = sp.Function("y")
+        locals_map = {**MATH_LOCALS, "x": x, "y": y}
+
+        try:
+            sym_expr = sp.sympify(self._normalize_math_text(expression), locals=locals_map)
+            if sym_expr.free_symbols - {x, y}:
+                raise ValueError("La expresion debe depender solo de las variables x e y.")
+
+            ode_rhs = sym_expr.subs(y, y_func(x))
+            ode = sp.Eq(sp.diff(y_func(x), x), ode_rhs)
+            solution = sp.dsolve(ode, ics={y_func(sp.Float(a)): sp.Float(y0)})
+            exact_expr = solution.rhs
+            exact_fn = sp.lambdify(x, exact_expr, modules=["numpy"])
+        except Exception as exc:
+            raise ValueError(
+                "No se pudo obtener la solución exacta de la EDO para construir la tabla solicitada."
+            ) from exc
+
+        def wrapped(x_value: float) -> float:
+            try:
+                numeric = complex(exact_fn(x_value))
+            except Exception as exc:
+                raise ValueError("No se pudo evaluar la solución exacta en la tabla.") from exc
+
+            if abs(numeric.imag) > 1e-12:
+                raise ValueError("La solución exacta tomó valores complejos no soportados.")
+
+            real_value = float(numeric.real)
+            if not np.isfinite(real_value):
+                raise ValueError("La solución exacta tomó valores no finitos.")
+            return real_value
 
         return wrapped
 
@@ -410,6 +533,18 @@ class MethodRunner:
             return variante, self._parse_positive_int(n_raw, "subintervalos n")
 
         raise ValueError("La variante debe ser 'Simple' o 'Compuesto'.")
+
+    def _parse_optional_error_eval_point(self, params: dict[str, object], a: float, b: float) -> float | None:
+        raw = str(params.get("x_error", "")).strip()
+        if not raw:
+            return None
+
+        x_eval = self._parse_numeric_scalar(raw, "x de evaluación del error de truncamiento")
+        x_min = min(a, b)
+        x_max = max(a, b)
+        if x_eval < x_min or x_eval > x_max:
+            raise ValueError("El valor x para evaluar el error de truncamiento debe pertenecer al intervalo [a, b].")
+        return x_eval
 
     def _parse_positive_int(self, text: str, field_name: str) -> int:
         try:

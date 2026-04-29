@@ -8,6 +8,7 @@ from __future__ import annotations
 from utils.parametros import resolver_config
 
 from .integracion_utils import (
+    calcular_error_truncamiento_simpson_38,
     construir_nodos_evaluados,
     normalizar_variante,
     renderizar_tabla_nodos,
@@ -33,6 +34,8 @@ def simpson_38(
     b: float,
     variante: str = "Simple",
     n: int | None = None,
+    f_expr_text: str | None = None,
+    x_eval_derivada: float | None = None,
 ) -> None:
     """Ejecuta Simpson 3/8 y emite salida de texto para la UI."""
     config = resolver_config()
@@ -75,3 +78,10 @@ def simpson_38(
     print(f"INTEGRACION_VARIANTE: {variante_label}")
     print(f"INTEGRACION_SUBINTERVALOS: {n_texto}")
     print(f"INTEGRACION_RESULTADO: {resultado_redondeado:.{precision}f}")
+
+    if f_expr_text:
+        error_truncamiento = calcular_error_truncamiento_simpson_38(
+            f_expr_text, a, b, n_subintervalos, precision, x_eval_derivada=x_eval_derivada
+        )
+        if error_truncamiento is not None:
+            print(f"ERROR_TRUNCAMIENTO: {error_truncamiento:.{precision}f}")

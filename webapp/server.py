@@ -74,13 +74,18 @@ def create_app() -> Flask:
             if result.error:
                 print(f"[api/run][error] {result.error}")
 
-        return jsonify(
-            {
-                "success": result.success,
-                "output": result.output,
-                "error": result.error,
-            }
-        )
+        # Extraer error de truncamiento si está presente
+        truncation_error = _extract_truncation_error(result.output)
+
+        response = {
+            "success": result.success,
+            "output": result.output,
+            "error": result.error,
+        }
+        if truncation_error is not None:
+            response["truncation_error"] = truncation_error
+
+        return jsonify(response)
 
     @app.post("/api/plot")
     def plot_function():
@@ -103,6 +108,8 @@ def create_app() -> Flask:
                 traces, latex_text = _build_diferencia_finita_plot_traces(params, x_min, x_max)
             elif method_key == "montecarlo":
                 traces, latex_text = _build_montecarlo_plot_traces(params)
+            elif method_key in {"euler", "runge_kutta_4"}:
+                traces, latex_text = _build_edo_plot_traces(method_key, params)
             else:
                 expr_key = _expression_key(method_key)
                 expr_text = str(params.get(expr_key, "")).strip()
@@ -252,6 +259,18 @@ def _domain_for_plot(method_key: str, params: dict) -> tuple[float, float]:
         if method_key == "diferencia_finita":
             center = _parse_numeric_scalar(str(params.get("x", "")), "punto x")
             return center - radius, center + radius
+
+        if method_key in {"euler", "runge_kutta_4"}:
+            a = _parse_numeric_scalar(str(params.get("a", "")), "inicio del intervalo a")
+            b = _parse_numeric_scalar(str(params.get("b", "")), "fin del intervalo b")
+            h = _parse_numeric_scalar(str(params.get("h", "")), "paso h")
+            if h <= 0 or b <= a:
+                return fallback
+            pad = max(0.1, abs(b - a) * 0.1)
+            lo = a - pad
+            hi = b + pad
+            if math.isfinite(lo) and math.isfinite(hi) and lo < hi:
+                return lo, hi
 
         if method_key == "montecarlo":
             lower_bounds = _parse_numeric_csv_list(str(params.get("lower_bounds", "")), "límites inferiores")
@@ -498,6 +517,149 @@ def _build_diferencia_finita_plot_traces(
     traces.append({"name": "Punto de tangencia", "kind": "markers", "points": [[x0, y_x]]})
 
     return traces, latex_text
+
+
+def _build_edo_plot_traces(method_key: str, params: dict[str, object]) -> tuple[list[dict[str, object]], str]:
+    expr_text = _normalize_math_text(str(params.get("f_expr", "")))
+    if not expr_text:
+        raise ValueError("Debes ingresar una función f(x,y) para graficar.")
+
+    a = _parse_numeric_scalar(str(params.get("a", "")), "inicio del intervalo a")
+    b = _parse_numeric_scalar(str(params.get("b", "")), "fin del intervalo b")
+    y0 = _parse_numeric_scalar(str(params.get("y0", "")), "valor inicial y0")
+    h = _parse_numeric_scalar(str(params.get("h", "")), "paso h")
+
+    if h <= 0:
+        raise ValueError("El paso h debe ser > 0.")
+    if b <= a:
+        raise ValueError("El intervalo debe cumplir a < b.")
+
+    fn, _ = _build_sympy_numeric_function_xy(expr_text)
+
+    particular_points = _edo_numerical_points(method_key, fn, a, y0, h, b)
+    if len(particular_points) < 2:
+        raise ValueError("No se pudo construir la solución particular para graficar.")
+
+    traces: list[dict[str, object]] = []
+    exact_points = _edo_exact_points(expr_text, a, y0, b)
+    if len(exact_points) >= 2:
+        traces.append(
+            {
+                "name": "Curva real",
+                "kind": "line",
+                "dash": "dash",
+                "points": exact_points,
+                "color": "#3f51b5",
+            }
+        )
+
+    traces.append(
+        {
+            "name": "Solución particular",
+            "kind": "line",
+            "points": particular_points,
+            "color": "#ef6c00",
+        }
+    )
+    traces.append(
+        {
+            "name": "Condición inicial",
+            "kind": "markers",
+            "points": [[float(a), float(y0)]],
+        }
+    )
+
+    latex_text = _expression_to_latex(expr_text)
+    return traces, latex_text
+
+
+def _build_sympy_numeric_function_xy(expr_text: str):
+    x = sp.Symbol("x")
+    y = sp.Symbol("y")
+    try:
+        expr = sp.sympify(_normalize_math_text(expr_text), locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x, "y": y})
+        if expr.free_symbols - {x, y}:
+            raise ValueError("La expresión debe depender solo de x e y.")
+        return sp.lambdify((x, y), expr, modules=["numpy"]), expr
+    except Exception as exc:
+        raise ValueError("La expresion de la funcion no es valida.") from exc
+
+
+def _edo_numerical_points(
+    method_key: str,
+    fn,
+    a: float,
+    y0: float,
+    h: float,
+    b: float,
+) -> list[list[float]]:
+    x = float(a)
+    y = float(y0)
+    points: list[list[float]] = [[x, y]]
+    tol = 1e-12
+
+    while x < b - tol:
+        h_eff = min(h, b - x)
+        if h_eff <= tol:
+            break
+
+        try:
+            if method_key == "euler":
+                k1 = _safe_real_float(fn(x, y))
+                if k1 is None:
+                    break
+                y = y + h_eff * k1
+            else:
+                k1 = _safe_real_float(fn(x, y))
+                k2 = _safe_real_float(fn(x + h_eff / 2.0, y + (h_eff * k1) / 2.0)) if k1 is not None else None
+                k3 = _safe_real_float(fn(x + h_eff / 2.0, y + (h_eff * k2) / 2.0)) if k2 is not None else None
+                k4 = _safe_real_float(fn(x + h_eff, y + h_eff * k3)) if k3 is not None else None
+                if None in {k1, k2, k3, k4}:
+                    break
+                y = y + (h_eff / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+            x_next = x + h_eff
+            if x_next > b - tol:
+                x_next = b
+            x = x_next
+            if not (math.isfinite(x) and math.isfinite(y) and abs(y) <= 1e6):
+                break
+            points.append([float(x), float(y)])
+        except Exception:
+            break
+
+    return points
+
+
+def _edo_exact_points(expr_text: str, a: float, y0: float, b: float) -> list[list[float]]:
+    x = sp.Symbol("x")
+    y = sp.Symbol("y")
+    y_func = sp.Function("y")
+    locals_map = {"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x, "y": y}
+
+    try:
+        sym_expr = sp.sympify(_normalize_math_text(expr_text), locals=locals_map)
+        if sym_expr.free_symbols - {x, y}:
+            return []
+
+        ode_rhs = sym_expr.subs(y, y_func(x))
+        ode = sp.Eq(sp.diff(y_func(x), x), ode_rhs)
+        solution = sp.dsolve(ode, ics={y_func(sp.Float(a)): sp.Float(y0)})
+        exact_expr = solution.rhs
+        exact_fn = sp.lambdify(x, exact_expr, modules=["numpy"])
+    except Exception:
+        return []
+
+    x_values = np.linspace(a, b, 401)
+    points: list[list[float]] = []
+    for xv in x_values:
+        yv = _safe_real_float(exact_fn(float(xv)))
+        if yv is None:
+            continue
+        if math.isfinite(yv) and abs(yv) <= 1e6:
+            points.append([float(xv), float(yv)])
+
+    return points
 
 
 def _build_lagrange_plot_traces(
@@ -1144,6 +1306,20 @@ def _parse_global_config(raw: object) -> dict[str, int | float]:
         result["debug_mode"] = bool(raw["debugMode"])
 
     return result
+
+
+def _extract_truncation_error(output: str) -> str | None:
+    """Extrae el valor de ERROR_TRUNCAMIENTO del output capturado."""
+    if not output:
+        return None
+    
+    for line in output.split('\n'):
+        if line.startswith('ERROR_TRUNCAMIENTO:'):
+            # Extrae el valor después del prefijo
+            value = line[len('ERROR_TRUNCAMIENTO:'):].strip()
+            return value
+    
+    return None
 
 
 if __name__ == "__main__":

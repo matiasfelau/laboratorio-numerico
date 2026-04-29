@@ -6,10 +6,55 @@ entre Trapecio, Simpson 1/3 y Simpson 3/8.
 
 from __future__ import annotations
 
+import sympy as sp
 from typing import Callable
 
 import numpy as np
 from tabulate import tabulate
+
+
+def _normalizar_texto_matematico(texto: str) -> str:
+    return str(texto).replace("π", "pi").replace("ℯ", "euler").strip()
+
+
+def _estimar_maximo_abs_derivada_en_intervalo(
+    derivada_expr: sp.Expr,
+    x: sp.Symbol,
+    a: float,
+    b: float,
+) -> float | None:
+    """Estima max |derivada(x)| en [a,b] tolerando puntos no evaluables."""
+    derivada_num = sp.lambdify(x, derivada_expr, modules=["numpy"])
+    x_vals = np.linspace(a, b, 401)
+    valores_abs: list[float] = []
+
+    for xi in x_vals:
+        yi: float | None = None
+
+        # Primer intento: función lambdify (rápido).
+        try:
+            with np.errstate(all="ignore"):
+                raw = derivada_num(float(xi))
+            yi = float(raw)
+        except Exception:
+            yi = None
+
+        # Fallback: evaluación simbólica puntual.
+        if yi is None:
+            try:
+                yi = float(sp.N(derivada_expr.subs(x, sp.Float(float(xi)))))
+            except Exception:
+                yi = None
+
+        if yi is None or not np.isfinite(yi):
+            continue
+
+        valores_abs.append(abs(yi))
+
+    if not valores_abs:
+        return None
+
+    return float(max(valores_abs))
 
 
 def normalizar_variante(variante: str) -> tuple[str, str]:
@@ -114,3 +159,135 @@ def renderizar_tabla_nodos(x_nodos: list[float], y_nodos: list[float], precision
         tablefmt="grid",
         floatfmt=f".{precision}f",
     )
+
+
+def calcular_error_truncamiento_trapecio(
+    f_expr_text: str,
+    a: float,
+    b: float,
+    n_subintervalos: int,
+    precision: int,
+    x_eval_derivada: float | None = None,
+) -> float | None:
+    """Calcula el error de truncamiento teórico para la regla del trapecio compuesto.
+
+    Fórmula: E = -(b-a)/12 * h^2 * f''(ξ)
+    donde h = (b-a)/n y ξ es un punto en [a, b].
+
+    Si se ingresa x_eval_derivada, usa |f''(x_eval_derivada)|.
+    En caso contrario, estima |f''(ξ)| como máximo de |f''(x)| en el intervalo.
+    """
+    try:
+        x = sp.Symbol("x")
+        expr = sp.sympify(
+            _normalizar_texto_matematico(f_expr_text),
+            locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x},
+        )
+
+        if expr.free_symbols - {x}:
+            return None
+
+        f_double_prime = sp.diff(expr, x, 2)
+        if x_eval_derivada is not None:
+            val = sp.N(f_double_prime.subs(x, sp.Float(x_eval_derivada)))
+            max_f_double_prime = abs(float(val))
+        else:
+            max_f_double_prime = _estimar_maximo_abs_derivada_en_intervalo(f_double_prime, x, a, b)
+
+        if max_f_double_prime is None or not np.isfinite(max_f_double_prime):
+            return None
+
+        h = (b - a) / n_subintervalos
+        error = (b - a) / 12.0 * h**2 * max_f_double_prime
+        return round(float(error), precision)
+
+    except Exception:
+        return None
+
+
+def calcular_error_truncamiento_simpson_13(
+    f_expr_text: str,
+    a: float,
+    b: float,
+    n_subintervalos: int,
+    precision: int,
+    x_eval_derivada: float | None = None,
+) -> float | None:
+    """Calcula el error de truncamiento teórico para Simpson 1/3 compuesto.
+
+    Fórmula: E = -(b-a)/180 * h^4 * f⁽⁴⁾(ξ)
+    donde h = (b-a)/n y ξ es un punto en [a, b].
+
+    Si se ingresa x_eval_derivada, usa |f⁽⁴⁾(x_eval_derivada)|.
+    En caso contrario, estima |f⁽⁴⁾(ξ)| como máximo de |f⁽⁴⁾(x)| en el intervalo.
+    """
+    try:
+        x = sp.Symbol("x")
+        expr = sp.sympify(
+            _normalizar_texto_matematico(f_expr_text),
+            locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x},
+        )
+
+        if expr.free_symbols - {x}:
+            return None
+
+        f_fourth = sp.diff(expr, x, 4)
+        if x_eval_derivada is not None:
+            val = sp.N(f_fourth.subs(x, sp.Float(x_eval_derivada)))
+            max_f_fourth = abs(float(val))
+        else:
+            max_f_fourth = _estimar_maximo_abs_derivada_en_intervalo(f_fourth, x, a, b)
+
+        if max_f_fourth is None or not np.isfinite(max_f_fourth):
+            return None
+
+        h = (b - a) / n_subintervalos
+        error = (b - a) / 180.0 * h**4 * max_f_fourth
+        return round(float(error), precision)
+
+    except Exception:
+        return None
+
+
+def calcular_error_truncamiento_simpson_38(
+    f_expr_text: str,
+    a: float,
+    b: float,
+    n_subintervalos: int,
+    precision: int,
+    x_eval_derivada: float | None = None,
+) -> float | None:
+    """Calcula el error de truncamiento teórico para Simpson 3/8 compuesto.
+
+    Fórmula: E = -(3(b-a)/80) * h^4 * f⁽⁴⁾(ξ)
+    donde h = (b-a)/n y ξ es un punto en [a, b].
+
+    Si se ingresa x_eval_derivada, usa |f⁽⁴⁾(x_eval_derivada)|.
+    En caso contrario, estima |f⁽⁴⁾(ξ)| como máximo de |f⁽⁴⁾(x)| en el intervalo.
+    """
+    try:
+        x = sp.Symbol("x")
+        expr = sp.sympify(
+            _normalizar_texto_matematico(f_expr_text),
+            locals={"pi": sp.pi, "e": sp.E, "E": sp.E, "euler": sp.E, "x": x},
+        )
+
+        if expr.free_symbols - {x}:
+            return None
+
+        f_fourth = sp.diff(expr, x, 4)
+        if x_eval_derivada is not None:
+            val = sp.N(f_fourth.subs(x, sp.Float(x_eval_derivada)))
+            max_f_fourth = abs(float(val))
+        else:
+            max_f_fourth = _estimar_maximo_abs_derivada_en_intervalo(f_fourth, x, a, b)
+
+        if max_f_fourth is None or not np.isfinite(max_f_fourth):
+            return None
+
+        h = (b - a) / n_subintervalos
+        error = 3.0 * (b - a) / 80.0 * h**4 * max_f_fourth
+        return round(float(error), precision)
+
+    except Exception:
+        return None

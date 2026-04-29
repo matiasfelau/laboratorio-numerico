@@ -102,6 +102,30 @@ def get_methods() -> list[MethodDefinition]:
             ],
         ),
         MethodDefinition(
+            key="euler",
+            label="Euler",
+            description="Resuelve y' = f(x,y) por Euler con condición inicial.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x,y)", "str", ""),
+                FieldDefinition("a", "Inicio del intervalo (a)", "float", "0"),
+                FieldDefinition("b", "Fin del intervalo (b)", "float", "1"),
+                FieldDefinition("y0", "Valor inicial y0", "float", "1"),
+                FieldDefinition("h", "Paso h", "float", "0.1"),
+            ],
+        ),
+        MethodDefinition(
+            key="runge_kutta_4",
+            label="Runge-Kutta 4",
+            description="Resuelve y' = f(x,y) por RK4 con condición inicial.",
+            fields=[
+                FieldDefinition("f_expr", "Función f(x,y)", "str", ""),
+                FieldDefinition("a", "Inicio del intervalo (a)", "float", "0"),
+                FieldDefinition("b", "Fin del intervalo (b)", "float", "1"),
+                FieldDefinition("y0", "Valor inicial y0", "float", "1"),
+                FieldDefinition("h", "Paso h", "float", "0.1"),
+            ],
+        ),
+        MethodDefinition(
             key="trapecio",
             label="Trapecio",
             description="Calcula una integral definida usando trapecio simple o compuesto.",
@@ -111,6 +135,7 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("b", "Límite superior (b)", "float", ""),
                 FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
                 FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
+                FieldDefinition("x_error", "x para evaluar derivada del error (opcional)", "float", "", optional=True),
             ],
         ),
         MethodDefinition(
@@ -123,6 +148,7 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("b", "Límite superior (b)", "float", ""),
                 FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
                 FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
+                FieldDefinition("x_error", "x para evaluar derivada del error (opcional)", "float", "", optional=True),
             ],
         ),
         MethodDefinition(
@@ -135,6 +161,7 @@ def get_methods() -> list[MethodDefinition]:
                 FieldDefinition("b", "Límite superior (b)", "float", ""),
                 FieldDefinition("variante", "Variante", "str", "Simple", INTEGRATION_VARIANT_OPTIONS),
                 FieldDefinition("n", "Subintervalos n (solo compuesto)", "str", "", optional=True),
+                FieldDefinition("x_error", "x para evaluar derivada del error (opcional)", "float", "", optional=True),
             ],
         ),
         MethodDefinition(
